@@ -1,0 +1,19 @@
+<svg width="144" height="144" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="100" fill="#000000"/>
+  <g transform="translate(96, 80)">
+    <!-- Coffee cup body -->
+    <path d="M40 120 L40 280 Q40 320 80 320 L200 320 Q240 320 240 280 L240 120 Z" fill="#14b8a6"/>
+    <!-- Cup handle -->
+    <path d="M240 140 Q300 140 300 200 Q300 260 240 260" stroke="#14b8a6" stroke-width="24" fill="none"/>
+    <!-- Steam lines -->
+    <path d="M100 60 Q110 40 100 20" stroke="#14b8a6" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M140 80 Q150 50 140 20" stroke="#14b8a6" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <path d="M180 60 Q190 40 180 20" stroke="#14b8a6" stroke-width="12" stroke-linecap="round" fill="none"/>
+    <!-- Plaid pattern accent -->
+    <line x1="60" y1="160" x2="220" y2="160" stroke="#000000" stroke-width="8" opacity="0.3"/>
+    <line x1="60" y1="200" x2="220" y2="200" stroke="#000000" stroke-width="8" opacity="0.3"/>
+    <line x1="60" y1="240" x2="220" y2="240" stroke="#000000" stroke-width="8" opacity="0.3"/>
+    <line x1="100" y1="120" x2="100" y2="320" stroke="#000000" stroke-width="8" opacity="0.3"/>
+    <line x1="180" y1="120" x2="180" y2="320" stroke="#000000" stroke-width="8" opacity="0.3"/>
+  </g>
+</svg>
