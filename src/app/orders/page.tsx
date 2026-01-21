@@ -37,6 +37,11 @@ export default function OrdersPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  // Update page title
+  useEffect(() => {
+    document.title = "My Orders | Hooligans";
+  }, []);
+
   const { data: orders = [], isLoading, refetch } = useQuery({
     queryKey: ["userOrders", session?.user?.id],
     queryFn: () => fetchUserOrders(session!.user!.id),

@@ -2,22 +2,22 @@
 
 import React, { useState, useEffect } from "react";
 import { MenuItem, SelectedModifier, ModifierList } from "@/types";
-import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ModifierSelectorProps {
   item: MenuItem;
   onModifiersChange: (modifiers: SelectedModifier[], comment?: string) => void;
+  onAddToCart?: () => void;
 }
 
 export default function ModifierSelector({
   item,
   onModifiersChange,
+  onAddToCart,
 }: ModifierSelectorProps) {
   const [selectedModifiers, setSelectedModifiers] = useState<Map<string, string[]>>(new Map());
   const [comment, setComment] = useState("");
-  const [isExpanded, setIsExpanded] = useState(false);
 
   // Helper function to build modifiers array from selectedModifiers state
   const buildModifiersArray = (modifiersMap: Map<string, string[]>): SelectedModifier[] => {
@@ -111,20 +111,7 @@ export default function ModifierSelector({
 
   return (
     <div className="mt-3 border-t pt-3">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
-      >
-        <span>Customize options</span>
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4" />
-        ) : (
-          <ChevronDown className="w-4 h-4" />
-        )}
-      </button>
-
-      {isExpanded && (
-        <div className="mt-3 space-y-4">
+      <div className="space-y-4">
           {sortedModifierLists.map((modifierList: ModifierList) => (
             <div key={modifierList.id}>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -200,13 +187,21 @@ export default function ModifierSelector({
           </div>
           
           <div className="pt-2 border-t">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center justify-between text-sm mb-3">
               <span className="font-medium">Total:</span>
               <span className="text-lg font-bold text-teal">${totalPrice.toFixed(2)}</span>
             </div>
+            {onAddToCart && (
+              <Button
+                onClick={onAddToCart}
+                disabled={!isValid}
+                className="w-full bg-teal hover:bg-teal-dark text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {isValid ? "Add to Cart" : "Please select required options"}
+              </Button>
+            )}
           </div>
         </div>
-      )}
     </div>
   );
 }

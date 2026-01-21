@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,10 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Coffee, Mail, Lock, User, Phone, Loader2 } from "lucide-react";
+import { Mail, Lock, User, Phone, Loader2, Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
 
 export default function RegisterPage() {
   const router = useRouter();
+
+  // Update page title
+  useEffect(() => {
+    document.title = "Sign Up | Hooligans";
+  }, []);
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -21,6 +28,10 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [autoLoginFailed, setAutoLoginFailed] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,21 +70,58 @@ export default function RegisterPage() {
         return;
       }
 
-      // Auto sign in after registration
+      // Registration successful
+      setRegistrationSuccess(true);
+
+      // Auto sign in after registration with normalized email
+      const normalizedEmail = formData.email.toLowerCase().trim();
       const result = await signIn("credentials", {
-        email: formData.email,
+        email: normalizedEmail,
         password: formData.password,
         redirect: false,
       });
 
       if (result?.error) {
-        router.push("/auth/login");
-      } else {
+        // Registration succeeded but auto-login failed
+        setAutoLoginFailed(true);
+        setError(
+          "Account created successfully, but automatic sign-in failed. Please sign in manually."
+        );
+        console.error("Auto-login error after registration:", result.error);
+      } else if (result?.ok) {
+        // Success - redirect to home
         router.push("/");
         router.refresh();
+      } else {
+        // Unknown state
+        setAutoLoginFailed(true);
+        setError(
+          "Account created successfully, but automatic sign-in failed. Please sign in manually."
+        );
       }
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      if (registrationSuccess) {
+        // Registration succeeded but something else failed
+        setAutoLoginFailed(true);
+        setError(
+          "Account created successfully, but automatic sign-in failed. Please sign in manually."
+        );
+      } else {
+        // Registration itself failed
+        const isNetworkError =
+          error instanceof TypeError ||
+          (error instanceof Error &&
+            (error.message.includes("fetch") ||
+              error.message.includes("network")));
+
+        if (isNetworkError) {
+          setError("Connection error. Please check your internet and try again.");
+        } else {
+          setError("Something went wrong. Please try again.");
+        }
+      }
     }
 
     setIsLoading(false);
@@ -87,17 +135,47 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="text-center pb-2">
-          <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Coffee className="w-8 h-8 text-teal" />
-          </div>
+          <Link href="/" className="flex flex-col items-center mb-4 group">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center p-2 mb-3 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+              <Image
+                src="/logo/Hooligans-Hero-Logo-2.png"
+                alt="Hooligans Logo"
+                width={48}
+                height={48}
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <Image
+              src="/logo/Hooligans LS Logo 1.png"
+              alt="Hooligans"
+              width={120}
+              height={20}
+              className="h-5 w-auto object-contain brightness-0"
+            />
+          </Link>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <p className="text-gray-500 mt-2">Join Hooligans and start ordering</p>
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">
+              <div
+                className={`p-3 rounded-lg text-sm text-center ${autoLoginFailed
+                    ? "bg-yellow-50 text-yellow-800 border border-yellow-200"
+                    : "bg-red-50 text-red-600"
+                  }`}
+              >
                 {error}
+                {autoLoginFailed && (
+                  <div className="mt-2">
+                    <Link
+                      href="/auth/login"
+                      className="text-teal font-semibold hover:underline"
+                    >
+                      Go to Sign In →
+                    </Link>
+                  </div>
+                )}
               </div>
             )}
 
@@ -154,13 +232,27 @@ export default function RegisterPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="••••••••"
-                  className="pl-10 h-12"
+                  className="pl-10 pr-10 h-12"
                   required
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400" />
+                  )}
+                  <span className="sr-only">Toggle password visibility</span>
+                </Button>
               </div>
             </div>
 
@@ -170,13 +262,27 @@ export default function RegisterPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <Input
                   id="confirmPassword"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   placeholder="••••••••"
-                  className="pl-10 h-12"
+                  className="pl-10 pr-10 h-12"
                   required
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400" />
+                  )}
+                  <span className="sr-only">Toggle password visibility</span>
+                </Button>
               </div>
             </div>
 

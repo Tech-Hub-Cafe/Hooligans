@@ -55,6 +55,11 @@ export default function AdminSettingsPage() {
   const [formData, setFormData] = useState<Partial<CafeSettings>>({});
   const [saved, setSaved] = useState(false);
 
+  // Update page title
+  useEffect(() => {
+    document.title = "Settings | Hooligans Admin";
+  }, []);
+
   const { data: settings, isLoading } = useQuery({
     queryKey: ["admin-settings"],
     queryFn: fetchSettings,
@@ -77,7 +82,9 @@ export default function AdminSettingsPage() {
       return res.json();
     },
     onSuccess: () => {
+      // Invalidate both admin and public settings caches
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["cafe-settings"] });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     },

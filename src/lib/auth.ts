@@ -36,34 +36,122 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[NextAuth] Missing credentials");
+            }
+            return null;
+          }
+
+          // Normalize email to lowercase for consistent lookup
+          const email = (credentials.email as string).toLowerCase().trim();
+          const password = credentials.password as string;
+
+          if (process.env.NODE_ENV === "development") {
+            console.log("[NextAuth] Attempting login for email:", email);
+          }
+
+          // Single optimized query with normalized email
+          // All emails should be normalized by now, but if legacy data exists,
+          // we use a case-insensitive raw query as fallback
+          let user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+              id: true,
+              email: true,
+              password: true,
+              name: true,
+              image: true,
+              is_admin: true,
+              provider: true,
+            },
+          });
+
+          // Fallback for legacy data: case-insensitive search using raw SQL
+          // This is more efficient than fetching all users
+          if (!user) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[NextAuth] User not found with exact match, trying case-insensitive search");
+            }
+            
+            // Use Prisma.sql for better type safety and SQL injection protection
+            const users = await prisma.$queryRaw<Array<{
+              id: number;
+              email: string;
+              password: string | null;
+              name: string | null;
+              image: string | null;
+              is_admin: boolean;
+              provider: string;
+            }>>`
+              SELECT id, email, password, name, image, is_admin, provider
+              FROM users
+              WHERE LOWER(email) = LOWER(${email})
+              LIMIT 1
+            `;
+            
+            if (users.length > 0) {
+              user = users[0];
+              if (process.env.NODE_ENV === "development") {
+                console.log("[NextAuth] Found user with case-insensitive search:", user.email);
+              }
+            }
+          }
+
+          if (!user) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[NextAuth] User not found for email:", email);
+            }
+            return null;
+          }
+
+          if (process.env.NODE_ENV === "development") {
+            console.log("[NextAuth] User found:", {
+              id: user.id,
+              email: user.email,
+              hasPassword: !!user.password,
+              provider: user.provider,
+            });
+          }
+
+          if (!user.password) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[NextAuth] User has no password (OAuth user):", email);
+            }
+            return null;
+          }
+
+          const passwordMatch = await bcrypt.compare(password, user.password);
+
+          if (!passwordMatch) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[NextAuth] Password mismatch for email:", email);
+            }
+            return null;
+          }
+
+          if (process.env.NODE_ENV === "development") {
+            console.log("[NextAuth] Login successful for email:", email);
+          }
+
+          return {
+            id: user.id.toString(),
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            isAdmin: user.is_admin,
+          };
+        } catch (error) {
+          console.error("[NextAuth] Authorize error:", error);
+          if (error instanceof Error) {
+            console.error("[NextAuth] Error message:", error.message);
+            if (process.env.NODE_ENV === "development") {
+              console.error("[NextAuth] Error stack:", error.stack);
+            }
+          }
           return null;
         }
-
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
-        });
-
-        if (!user || !user.password) {
-          return null;
-        }
-
-        const passwordMatch = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
-
-        if (!passwordMatch) {
-          return null;
-        }
-
-        return {
-          id: user.id.toString(),
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          isAdmin: user.is_admin,
-        };
       },
     }),
   ],
@@ -71,16 +159,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async signIn({ user, account }) {
       try {
         if (account?.provider === "google") {
-          // Check if user exists
+          // Normalize email to lowercase for consistent storage and lookup
+          const normalizedEmail = user.email?.toLowerCase().trim();
+          
+          if (!normalizedEmail) {
+            console.error("[NextAuth] Google OAuth user missing email");
+            return false;
+          }
+
+          // Check if user exists (using normalized email)
           const existingUser = await prisma.user.findUnique({
-            where: { email: user.email! },
+            where: { email: normalizedEmail },
           });
 
           if (!existingUser) {
-            // Create new user for Google sign-in
+            // Create new user for Google sign-in with normalized email
             const newUser = await prisma.user.create({
               data: {
-                email: user.email!,
+                email: normalizedEmail,
                 name: user.name,
                 image: user.image,
                 provider: "google",
@@ -92,11 +188,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           } else {
             user.id = existingUser.id.toString();
             (user as typeof user & { isAdmin: boolean }).isAdmin = existingUser.is_admin;
+            
+            // Update user info if it changed (e.g., profile picture updated)
+            if (user.name !== existingUser.name || user.image !== existingUser.image) {
+              await prisma.user.update({
+                where: { id: existingUser.id },
+                data: {
+                  name: user.name || existingUser.name,
+                  image: user.image || existingUser.image,
+                },
+              });
+            }
           }
         }
         return true;
       } catch (error) {
         console.error("[NextAuth] SignIn error:", error);
+        if (error instanceof Error) {
+          console.error("[NextAuth] SignIn error message:", error.message);
+        }
         return false;
       }
     },
@@ -126,60 +236,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       try {
-        // Ensure session and user exist
-        if (!session) {
-          console.warn("[NextAuth] Session is null/undefined");
+        // Session and user should always exist from NextAuth, but add minimal safety check
+        if (!session?.user) {
+          console.error("[NextAuth] Session or user is missing");
+          // Return a minimal valid session instead of throwing
           return {
+            ...session,
             user: {
+              ...session?.user,
               id: "",
-              email: "",
-              name: null,
-              image: null,
               isAdmin: false,
             },
-            expires: new Date().toISOString(),
-          } as any;
+          };
         }
 
-        // Ensure user object exists
-        if (!session.user) {
-          console.warn("[NextAuth] Session.user is null/undefined");
-          session.user = {
-            id: "",
-            email: "",
-            name: null,
-            image: null,
-            isAdmin: false,
-          } as any;
-        }
-
-        // Safely assign token values
-        if (token?.id) {
-          session.user.id = String(token.id);
-        } else {
-          session.user.id = "";
-        }
-
-        if (typeof token?.isAdmin === "boolean") {
-          session.user.isAdmin = token.isAdmin;
-        } else {
-          session.user.isAdmin = false;
-        }
+        // Assign token values to session
+        session.user.id = token?.id ? String(token.id) : "";
+        session.user.isAdmin = typeof token?.isAdmin === "boolean" ? token.isAdmin : false;
 
         return session;
       } catch (error) {
         console.error("[NextAuth] Session callback error:", error);
-        // Return a minimal valid session to prevent 500
+        // Return a safe fallback session instead of throwing
         return {
+          ...session,
           user: {
+            ...session?.user,
             id: "",
-            email: token?.email as string || "",
-            name: token?.name as string || null,
-            image: token?.picture as string || null,
             isAdmin: false,
           },
-          expires: new Date().toISOString(),
-        } as any;
+        };
       }
     },
   },

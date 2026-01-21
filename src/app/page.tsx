@@ -1,13 +1,29 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Coffee, Clock, Award } from "lucide-react";
+import { ArrowRight, Clock, Award } from "lucide-react";
 import Image from "next/image";
+
+export const metadata: Metadata = {
+  title: "Home | Hooligans",
+  description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere",
+};
 
 export default function Home() {
   return (
     <div className="bg-white">
       {/* Hero Section */}
-      <section className="relative h-[90vh] flex items-center justify-center overflow-hidden plaid-pattern">
+      <section className="relative h-[90vh] flex items-center justify-center overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/tartan-bg.png"
+            alt="Hooligans Tartan Pattern"
+            fill
+            className="object-cover"
+            priority
+          />
+        </div>
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/60" />
 
         <div className="relative z-10 text-center px-4 max-w-5xl mx-auto">
@@ -26,19 +42,19 @@ export default function Home() {
             atmosphere
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/menu">
-              <Button className="bg-teal hover:bg-teal-dark text-white font-semibold px-8 py-6 text-lg rounded-lg shadow-xl transition-all duration-300 hover:scale-105">
-                Order Now
-                <ArrowRight className="ml-2 w-5 h-5" />
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center w-full max-w-2xl mx-auto px-4">
+            <Link href="/menu" className="flex-1 w-full sm:w-auto min-w-[200px] sm:min-w-[280px]">
+              <Button className="w-full bg-teal hover:bg-teal-dark text-white font-semibold px-8 sm:px-12 py-6 sm:py-7 text-base sm:text-lg rounded-xl shadow-xl transition-all duration-300 hover:scale-105 flex items-center justify-center gap-2">
+                Start Ordering
+                <ArrowRight className="w-5 h-5 sm:w-6 sm:h-6" />
               </Button>
             </Link>
-            <Link href="/menu">
+            <Link href="/about" className="flex-1 w-full sm:w-auto min-w-[200px] sm:min-w-[280px]">
               <Button
                 variant="outline"
-                className="bg-white/10 backdrop-blur-sm border-2 border-white text-white hover:bg-white hover:text-black font-semibold px-8 py-6 text-lg rounded-lg transition-all duration-300"
+                className="w-full bg-white/10 backdrop-blur-sm border-2 border-white text-white hover:bg-white hover:text-black font-semibold px-8 sm:px-12 py-6 sm:py-7 text-base sm:text-lg rounded-xl transition-all duration-300 hover:scale-105"
               >
-                View Menu
+                Learn More
               </Button>
             </Link>
           </div>
@@ -50,8 +66,14 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-3 gap-12">
             <div className="text-center group">
-              <div className="w-20 h-20 mx-auto mb-6 bg-black rounded-2xl flex items-center justify-center transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
-                <Coffee className="w-10 h-10 text-teal" />
+              <div className="w-20 h-20 mx-auto mb-6 bg-white rounded-2xl flex items-center justify-center p-2 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
+                <Image
+                  src="/logo/Hooligans-Hero-Logo-2.png"
+                  alt="Hooligans Logo"
+                  width={64}
+                  height={64}
+                  className="w-full h-full object-contain"
+                />
               </div>
               <h3 className="text-2xl font-bold mb-4">Premium Coffee</h3>
               <p className="text-gray-600 leading-relaxed">
@@ -135,7 +157,7 @@ export default function Home() {
             </div>
 
             <div className="relative h-80 rounded-2xl overflow-hidden group cursor-pointer">
-            <Image
+              <Image
                 src="https://images.unsplash.com/photo-1592415486689-125cbbfcbee2?w=800"
                 alt="Atmosphere"
                 fill

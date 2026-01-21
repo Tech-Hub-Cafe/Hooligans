@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart,
@@ -40,6 +41,10 @@ async function fetchMenuItems(): Promise<MenuItem[]> {
 }
 
 export default function AdminDashboard() {
+  // Update page title
+  useEffect(() => {
+    document.title = "Admin Dashboard | Hooligans";
+  }, []);
   const { data: orders = [] } = useQuery({
     queryKey: ["admin-orders"],
     queryFn: fetchOrders,

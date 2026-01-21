@@ -1,30 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
-  Plus,
-  Edit2,
-  Trash2,
   Loader2,
   ImageIcon,
-  Check,
-  X,
+  Tag,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -35,32 +21,16 @@ import {
 import Image from "next/image";
 
 interface MenuItem {
-  id: number;
+  id: string; // Square ID
   name: string;
-  description: string;
+  description: string | null;
   price: number;
   category: string;
-  image_url: string;
+  image_url: string | null;
   available: boolean;
+  square_id: string;
+  isDisabled?: boolean;
 }
-
-const categories = [
-  "Coffee",
-  "Tea",
-  "Pastries",
-  "Sandwiches",
-  "Breakfast",
-  "Desserts",
-];
-
-const initialFormData = {
-  name: "",
-  description: "",
-  price: "",
-  category: "Coffee",
-  image_url: "",
-  available: true,
-};
 
 async function fetchMenuItems(): Promise<MenuItem[]> {
   const res = await fetch("/api/admin/menu");
@@ -70,90 +40,67 @@ async function fetchMenuItems(): Promise<MenuItem[]> {
 
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
+  
+  // Update page title
+  useEffect(() => {
+    document.title = "Menu Management | Hooligans Admin";
+  }, []);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [deleteItemId, setDeleteItemId] = useState<number | null>(null);
-  const [formData, setFormData] = useState(initialFormData);
 
   const { data: menuItems = [], isLoading } = useQuery({
     queryKey: ["admin-menu"],
     queryFn: fetchMenuItems,
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const res = await fetch("/api/admin/menu", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          price: parseFloat(data.price),
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to create menu item");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
-      closeDialog();
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
-      const res = await fetch(`/api/admin/menu/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...data,
-          price: parseFloat(data.price),
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update menu item");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
-      closeDialog();
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`/api/admin/menu/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete menu item");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
-      setDeleteItemId(null);
-    },
-  });
-
   const toggleAvailabilityMutation = useMutation({
-    mutationFn: async ({ id, available }: { id: number; available: boolean }) => {
-      const item = menuItems.find((m) => m.id === id);
-      if (!item) throw new Error("Item not found");
-
-      const res = await fetch(`/api/admin/menu/${id}`, {
-        method: "PUT",
+    mutationFn: async ({ squareId, available }: { squareId: string; available: boolean }) => {
+      const res = await fetch(`/api/admin/menu?square_id=${squareId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...item,
-          available,
-        }),
+        body: JSON.stringify({ available }),
       });
-      if (!res.ok) throw new Error("Failed to update menu item");
+      if (!res.ok) throw new Error("Failed to toggle menu item");
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+      queryClient.invalidateQueries({ queryKey: ["menuItems"] }); // Also invalidate public menu
     },
   });
+
+  // Fetch disabled categories
+  const { data: disabledCategoriesData } = useQuery({
+    queryKey: ["admin-disabled-categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/categories");
+      if (!res.ok) throw new Error("Failed to fetch disabled categories");
+      return res.json();
+    },
+  });
+
+  const disabledCategoryNames = new Set(disabledCategoriesData?.disabledCategories || []);
+
+  const toggleCategoryMutation = useMutation({
+    mutationFn: async ({ categoryName, available }: { categoryName: string; available: boolean }) => {
+      const res = await fetch(`/api/admin/categories?category_name=${encodeURIComponent(categoryName)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ available }),
+      });
+      if (!res.ok) throw new Error("Failed to toggle category");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-disabled-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-menu"] });
+      queryClient.invalidateQueries({ queryKey: ["menuItems"] }); // Also invalidate public menu
+    },
+  });
+
+  // Get unique categories from menu items
+  const categories = Array.from(new Set(menuItems.map(item => item.category))).sort();
 
   const filteredItems = menuItems.filter((item) => {
     const matchesSearch = item.name
@@ -163,40 +110,6 @@ export default function AdminMenuPage() {
       categoryFilter === "all" || item.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
-
-  const openCreateDialog = () => {
-    setEditingItem(null);
-    setFormData(initialFormData);
-    setIsDialogOpen(true);
-  };
-
-  const openEditDialog = (item: MenuItem) => {
-    setEditingItem(item);
-    setFormData({
-      name: item.name,
-      description: item.description || "",
-      price: item.price.toString(),
-      category: item.category,
-      image_url: item.image_url || "",
-      available: item.available,
-    });
-    setIsDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    setIsDialogOpen(false);
-    setEditingItem(null);
-    setFormData(initialFormData);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingItem) {
-      updateMutation.mutate({ id: editingItem.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -212,14 +125,49 @@ export default function AdminMenuPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Menu Items</h1>
           <p className="text-gray-600 mt-1">
-            Manage your cafe&apos;s menu items
+            Manage menu items from Square POS. Toggle visibility to show/hide items on the website.
           </p>
         </div>
-        <Button onClick={openCreateDialog} className="bg-teal hover:bg-teal-dark text-white gap-2">
-          <Plus className="w-4 h-4" />
-          Add Item
-        </Button>
       </div>
+
+      {/* Category Management */}
+      <Card className="border-0 shadow-lg mb-6">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Tag className="w-5 h-5 text-teal" />
+            <h2 className="text-lg font-semibold">Category Visibility</h2>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {categories.map((category) => {
+              const isDisabled = disabledCategoryNames.has(category);
+              return (
+                <div
+                  key={category}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200"
+                >
+                  <span className="text-sm font-medium">{category}</span>
+                  <Switch
+                    checked={!isDisabled}
+                    disabled={toggleCategoryMutation.isPending}
+                    onCheckedChange={(checked) =>
+                      toggleCategoryMutation.mutate({
+                        categoryName: category,
+                        available: checked,
+                      })
+                    }
+                  />
+                  <span className="text-xs text-gray-500">
+                    {isDisabled ? "Hidden" : "Visible"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-sm text-gray-500 mt-3">
+            Toggle category visibility to show/hide entire categories on the public menu.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card className="border-0 shadow-lg mb-6">
@@ -310,33 +258,20 @@ export default function AdminMenuPage() {
                   <div className="flex items-center gap-2">
                     <Switch
                       checked={item.available}
+                      disabled={toggleAvailabilityMutation.isPending}
                       onCheckedChange={(checked) =>
                         toggleAvailabilityMutation.mutate({
-                          id: item.id,
+                          squareId: item.square_id,
                           available: checked,
                         })
                       }
                     />
                     <span className="text-sm text-gray-500">
-                      {item.available ? "Available" : "Hidden"}
+                      {item.available ? "Visible" : "Hidden"}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEditDialog(item)}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => setDeleteItemId(item.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                  <div className="text-xs text-gray-400">
+                    Square ID: {item.square_id.substring(0, 8)}...
                   </div>
                 </div>
               </CardContent>
@@ -344,139 +279,6 @@ export default function AdminMenuPage() {
           ))
         )}
       </div>
-
-      {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingItem ? "Edit Menu Item" : "Add New Menu Item"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="price">Price *</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, category: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="image_url">Image URL</Label>
-              <Input
-                id="image_url"
-                type="url"
-                value={formData.image_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, image_url: e.target.value })
-                }
-                placeholder="https://..."
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={formData.available}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, available: checked })
-                }
-              />
-              <Label>Available for ordering</Label>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeDialog}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="bg-teal hover:bg-teal-dark text-white"
-                disabled={createMutation.isPending || updateMutation.isPending}
-              >
-                {createMutation.isPending || updateMutation.isPending
-                  ? "Saving..."
-                  : editingItem
-                  ? "Update"
-                  : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteItemId} onOpenChange={() => setDeleteItemId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Menu Item</DialogTitle>
-          </DialogHeader>
-          <p className="text-gray-600">
-            Are you sure you want to delete this menu item? This action cannot
-            be undone.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteItemId(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteItemId && deleteMutation.mutate(deleteItemId)}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

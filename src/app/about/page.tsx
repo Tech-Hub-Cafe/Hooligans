@@ -1,5 +1,11 @@
-import { Coffee, Users, Heart, Leaf } from "lucide-react";
+import type { Metadata } from "next";
+import { Users, Heart, Leaf } from "lucide-react";
 import Image from "next/image";
+
+export const metadata: Metadata = {
+  title: "About Us | Hooligans",
+  description: "Learn about Hooligans - our story, values, and commitment to exceptional coffee and community",
+};
 
 export default function AboutPage() {
   return (
@@ -60,8 +66,14 @@ export default function AboutPage() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="bg-white p-8 rounded-2xl shadow-lg text-center group hover:shadow-xl transition-shadow">
-              <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                <Coffee className="w-8 h-8 text-teal" />
+              <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center p-2 mx-auto mb-6 group-hover:scale-110 transition-transform">
+                <Image
+                  src="/logo/Hooligans-Hero-Logo-2.png"
+                  alt="Hooligans Logo"
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-contain"
+                />
               </div>
               <h3 className="text-xl font-bold mb-3">Quality First</h3>
               <p className="text-gray-600">

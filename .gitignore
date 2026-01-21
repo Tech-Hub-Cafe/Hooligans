@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+certificates
+
+# Prisma seed file (contains sensitive admin credentials)
+prisma/seed.ts

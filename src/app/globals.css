@@ -119,6 +119,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -144,7 +145,7 @@
 /* Plaid Pattern Background */
 .plaid-pattern {
   background-color: #f9fafb;
-  background-image: 
+  background-image:
     repeating-linear-gradient(90deg, transparent 0px, transparent 38px, rgba(220, 38, 38, 0.25) 38px, rgba(220, 38, 38, 0.25) 42px),
     repeating-linear-gradient(0deg, transparent 0px, transparent 38px, rgba(220, 38, 38, 0.25) 38px, rgba(220, 38, 38, 0.25) 42px),
     repeating-linear-gradient(90deg, transparent 0px, transparent 18px, rgba(0, 0, 0, 0.12) 18px, rgba(0, 0, 0, 0.12) 20px),
@@ -168,6 +169,7 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }

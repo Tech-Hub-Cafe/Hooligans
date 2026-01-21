@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
@@ -9,8 +9,10 @@ import {
   ShoppingCart,
   UtensilsCrossed,
   Settings,
+  Clock,
   ArrowLeft,
   Loader2,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +20,7 @@ const adminNavItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/menu", label: "Menu Items", icon: UtensilsCrossed },
+  { href: "/admin/ordering-time", label: "Ordering Time", icon: Clock },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -69,7 +72,7 @@ export default function AdminLayout({
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Admin Sidebar */}
-      <aside className="fixed inset-y-0 left-0 w-64 bg-gray-900 text-white shadow-xl z-50">
+      <aside className="fixed top-20 left-0 bottom-0 w-64 bg-gray-900 text-white shadow-xl z-40">
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="p-6 border-b border-gray-800">
@@ -106,8 +109,8 @@ export default function AdminLayout({
             </ul>
           </nav>
 
-          {/* Back to Site */}
-          <div className="p-4 border-t border-gray-800">
+          {/* Footer Actions */}
+          <div className="p-4 border-t border-gray-800 space-y-2">
             <Link href="/">
               <Button
                 variant="outline"
@@ -117,12 +120,20 @@ export default function AdminLayout({
                 Back to Site
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              onClick={() => signOut({ callbackUrl: "/" })}
+              className="w-full border-red-700/50 text-red-400 hover:bg-red-900/20 hover:text-red-300 hover:border-red-600"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="ml-64 min-h-screen">
+      <main className="ml-64 min-h-screen pt-20">
         <div className="p-8">{children}</div>
       </main>
     </div>

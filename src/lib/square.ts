@@ -2,6 +2,7 @@
 // Using Square SDK
 
 import { SquareClient, SquareEnvironment } from "square";
+import { randomUUID } from "crypto";
 
 // Detect environment from token or use NODE_ENV
 // Sandbox tokens typically start with "EAAAl" or "sandbox-"
@@ -9,27 +10,27 @@ import { SquareClient, SquareEnvironment } from "square";
 function detectSquareEnvironment(): SquareEnvironment {
   const token = process.env.SQUARE_ACCESS_TOKEN || "";
   const nodeEnv = process.env.NODE_ENV;
-  
+
   // Explicit environment override
   if (process.env.SQUARE_ENVIRONMENT) {
-    return process.env.SQUARE_ENVIRONMENT === "production" 
-      ? SquareEnvironment.Production 
+    return process.env.SQUARE_ENVIRONMENT === "production"
+      ? SquareEnvironment.Production
       : SquareEnvironment.Sandbox;
   }
-  
+
   // Auto-detect from token format
   // Sandbox tokens: EAAAl... (lowercase 'l' after EAAA)
   if (token.startsWith("sandbox-") || token.startsWith("EAAAl")) {
     console.log("[Square] Detected Sandbox token (starts with EAAAl or sandbox-)");
     return SquareEnvironment.Sandbox;
   }
-  
+
   // Production tokens: sq0at-... or EAAA... (but not EAAAl...)
   if (token.startsWith("sq0at-") || (token.startsWith("EAAA") && !token.startsWith("EAAAl"))) {
     console.log("[Square] Detected Production token");
     return SquareEnvironment.Production;
   }
-  
+
   // Fallback to NODE_ENV
   return nodeEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
 }
@@ -82,13 +83,13 @@ export function extractSquareError(error: unknown): {
       message: squareError.message || 'Square API error',
       statusCode: squareError.statusCode || squareError.status,
       errors: squareError.errors || [],
-      isAuthError: squareError.statusCode === 401 || 
-                   squareError.statusCode === 403 ||
-                   squareError.status === 401 ||
-                   squareError.status === 403,
+      isAuthError: squareError.statusCode === 401 ||
+        squareError.statusCode === 403 ||
+        squareError.status === 401 ||
+        squareError.status === 403,
     };
   }
-  
+
   return {
     message: error instanceof Error ? error.message : 'Unknown error',
     isAuthError: false,
@@ -98,7 +99,7 @@ export function extractSquareError(error: unknown): {
 // Helper to check if Square is properly configured
 export function isSquareConfigured(): boolean {
   return !!(
-    process.env.SQUARE_ACCESS_TOKEN && 
+    process.env.SQUARE_ACCESS_TOKEN &&
     process.env.SQUARE_LOCATION_ID
   );
 }
@@ -171,8 +172,79 @@ export async function getCatalogInfo() {
   }
 }
 
+// Search catalog objects (recommended method - includes related objects)
+export async function searchCatalogObjects(
+  objectTypes: string[],
+  cursor?: string,
+  includeRelatedObjects: boolean = true
+) {
+  try {
+    const requestBody: any = {
+      objectTypes: objectTypes,
+      includeRelatedObjects: includeRelatedObjects,
+    };
+
+    if (cursor) {
+      requestBody.cursor = cursor;
+    }
+
+    console.log("[Square API] Catalog search request:", {
+      objectTypes: requestBody.objectTypes,
+      cursor: requestBody.cursor,
+      includeRelatedObjects: requestBody.includeRelatedObjects,
+    });
+
+    const response = await catalogApi.search(requestBody);
+
+    // Square SDK v43 might return response.result or response directly
+    const result = (response as any).result || response;
+
+    // SearchCatalogObjectsResponse has objects and relatedObjects arrays
+    const objects = result.objects || [];
+    const relatedObjects = result.relatedObjects || [];
+
+    // Combine objects and relatedObjects (relatedObjects are referenced by objects)
+    const allObjects = [...objects, ...relatedObjects];
+
+    // Try multiple ways to access cursor
+    const responseCursor = result.cursor ||
+      result.cursor_ ||
+      result.nextCursor ||
+      (response as any).cursor ||
+      null;
+
+    console.log("[Square API] Catalog search response:", {
+      hasObjects: objects.length > 0,
+      objectCount: objects.length,
+      hasRelatedObjects: relatedObjects.length > 0,
+      relatedObjectCount: relatedObjects.length,
+      totalObjects: allObjects.length,
+      hasCursor: !!responseCursor,
+      cursorValue: responseCursor?.substring(0, 50) || 'none',
+    });
+
+    return {
+      objects: allObjects,
+      cursor: responseCursor,
+    };
+  } catch (error: any) {
+    const squareError = extractSquareError(error);
+    console.error("[Square API] Catalog search error:", {
+      statusCode: squareError.statusCode,
+      message: squareError.message,
+      errors: squareError.errors,
+    });
+    throw {
+      statusCode: squareError.statusCode || 500,
+      status: squareError.statusCode || 500,
+      message: squareError.message,
+      errors: squareError.errors || [],
+    };
+  }
+}
+
 // List catalog items
-export async function listCatalogItems(types?: string | string[], cursor?: string) {
+export async function listCatalogItems(types?: string | string[], cursor?: string, includeRelatedObjects?: boolean) {
   try {
     const requestBody: any = {};
     if (types) {
@@ -182,14 +254,18 @@ export async function listCatalogItems(types?: string | string[], cursor?: strin
     if (cursor) {
       requestBody.cursor = cursor;
     }
+    if (includeRelatedObjects !== undefined) {
+      requestBody.includeRelatedObjects = includeRelatedObjects;
+    }
 
     console.log("[Square API] Catalog list request:", {
       types: requestBody.types,
       cursor: requestBody.cursor,
+      includeRelatedObjects: requestBody.includeRelatedObjects,
     });
 
     const response = await catalogApi.list(requestBody);
-    
+
     // Log the full response structure to understand what Square SDK returns
     console.log("[Square API] Full response structure:", {
       hasResult: !!(response as any).result,
@@ -198,22 +274,22 @@ export async function listCatalogItems(types?: string | string[], cursor?: strin
       responseKeys: Object.keys(response || {}),
       responseResultKeys: (response as any).result ? Object.keys((response as any).result) : [],
     });
-    
+
     // Square SDK v43 might return response.result or response directly
     const result = (response as any).result || response;
-    
+
     // Page<CatalogObject> has data property and cursor
     const objects = result.data || result.objects || [];
-    
+
     // Try multiple ways to access cursor (SDK might return it differently)
-    const responseCursor = result.cursor || 
-                          result.cursor_ || 
-                          result.nextCursor ||
-                          (response as any).cursor ||
-                          (response as any).cursor_ ||
-                          (response as any).nextCursor ||
-                          null;
-    
+    const responseCursor = result.cursor ||
+      result.cursor_ ||
+      result.nextCursor ||
+      (response as any).cursor ||
+      (response as any).cursor_ ||
+      (response as any).nextCursor ||
+      null;
+
     console.log("[Square API] Catalog list response:", {
       hasObjects: objects.length > 0,
       objectCount: objects.length,
@@ -221,10 +297,10 @@ export async function listCatalogItems(types?: string | string[], cursor?: strin
       cursorValue: responseCursor?.substring(0, 50) || 'none',
       resultKeys: result ? Object.keys(result) : [],
     });
-    
+
     // Also check if there's a cursor in the response wrapper
     const finalCursor = responseCursor || (response as any).cursor || null;
-    
+
     return {
       objects: objects,
       cursor: finalCursor,
@@ -245,6 +321,98 @@ export async function listCatalogItems(types?: string | string[], cursor?: strin
   }
 }
 
+// Create Square Order (appears in POS and can be printed)
+export async function createSquareOrder(orderData: {
+  locationId: string;
+  lineItems: Array<{
+    name: string;
+    quantity: string;
+    catalogObjectId?: string;
+    catalogVersion?: bigint;
+    basePriceMoney?: {
+      amount: bigint;
+      currency: string;
+    };
+    modifiers?: Array<{
+      catalogObjectId?: string;
+      name: string;
+      basePriceMoney?: {
+        amount: bigint;
+        currency: string;
+      };
+    }>;
+    note?: string;
+  }>;
+  customerNote?: string;
+  referenceId?: string;
+}) {
+  try {
+    console.log("[Square API] Creating Square Order:", {
+      locationId: orderData.locationId?.substring(0, 10) + "...",
+      lineItemCount: orderData.lineItems.length,
+      hasCustomerNote: !!orderData.customerNote,
+    });
+
+    const order = {
+      locationId: orderData.locationId,
+      referenceId: orderData.referenceId || `WEB-${Date.now()}`,
+      lineItems: orderData.lineItems.map(item => ({
+        name: item.name,
+        quantity: item.quantity,
+        ...(item.basePriceMoney && { basePriceMoney: item.basePriceMoney }),
+        ...(item.catalogObjectId && {
+          catalogObjectId: item.catalogObjectId,
+          ...(item.catalogVersion && { catalogVersion: item.catalogVersion }),
+        }),
+        ...(item.modifiers && item.modifiers.length > 0 && {
+          modifiers: item.modifiers,
+        }),
+        ...(item.note && { note: item.note }),
+      })),
+      ...(orderData.customerNote && {
+        metadata: {
+          customer_note: orderData.customerNote,
+        },
+      }),
+    };
+
+    // Square Orders API - use create method
+    const response = await ordersApi.create({
+      order: order as any,
+      idempotencyKey: randomUUID(),
+    });
+
+    const result = (response as any).result || response;
+
+    console.log("[Square API] Square Order created:", {
+      orderId: result.order?.id,
+      state: result.order?.state,
+      version: result.order?.version,
+    });
+
+    return {
+      order: result.order,
+    };
+  } catch (error: any) {
+    console.error("[Square API] Square Order creation error:", error);
+    const squareError = extractSquareError(error);
+
+    console.error("[Square API] Square Order error details:", {
+      statusCode: squareError.statusCode,
+      message: squareError.message,
+      errors: squareError.errors,
+    });
+
+    throw {
+      statusCode: squareError.statusCode || 500,
+      status: squareError.statusCode || 500,
+      message: squareError.message,
+      errors: squareError.errors || [],
+      detail: squareError.errors?.[0]?.detail || squareError.message,
+    };
+  }
+}
+
 // Create payment
 export async function createPayment(paymentData: {
   sourceId: string;
@@ -256,31 +424,85 @@ export async function createPayment(paymentData: {
   locationId: string;
   buyerEmailAddress?: string;
   note?: string;
+  orderId?: string;
 }) {
   try {
-    const response = await paymentsApi.create({
+    console.log("[Square API] Creating payment:", {
+      sourceId: paymentData.sourceId?.substring(0, 20) + "...",
+      amount: paymentData.amountMoney.amount,
+      currency: paymentData.amountMoney.currency,
+      locationId: paymentData.locationId?.substring(0, 10) + "...",
+      hasEmail: !!paymentData.buyerEmailAddress,
+      hasOrderId: !!paymentData.orderId,
+    });
+
+    // Build payment request with required fields for Australia
+    // Square Payments API requires: sourceId, idempotencyKey, amountMoney, locationId
+    const paymentRequest: any = {
       sourceId: paymentData.sourceId,
       idempotencyKey: paymentData.idempotencyKey,
       amountMoney: {
         amount: BigInt(paymentData.amountMoney.amount),
-        currency: paymentData.amountMoney.currency as any,
+        currency: paymentData.amountMoney.currency as any, // AUD for Australia
       },
       locationId: paymentData.locationId,
-      buyerEmailAddress: paymentData.buyerEmailAddress,
-      note: paymentData.note,
+      autocomplete: true, // Automatically capture payment (default for card payments)
+    };
+
+    // Add optional fields if provided
+    if (paymentData.buyerEmailAddress) {
+      paymentRequest.buyerEmailAddress = paymentData.buyerEmailAddress;
+    }
+    if (paymentData.note) {
+      paymentRequest.note = paymentData.note;
+    }
+    if (paymentData.orderId) {
+      paymentRequest.orderId = paymentData.orderId;
+    }
+
+    console.log("[Square API] Payment request:", {
+      hasSourceId: !!paymentRequest.sourceId,
+      sourceIdPreview: paymentRequest.sourceId?.substring(0, 30) + "...",
+      amount: paymentRequest.amountMoney.amount.toString(),
+      currency: paymentRequest.amountMoney.currency,
+      locationId: paymentRequest.locationId?.substring(0, 10) + "...",
+      autocomplete: paymentRequest.autocomplete,
+      hasEmail: !!paymentRequest.buyerEmailAddress,
+      hasNote: !!paymentRequest.note,
     });
+
+    const response = await paymentsApi.create(paymentRequest);
+
     // HttpResponsePromise returns response with result property
     const result = (response as any).result || response;
+
+    console.log("[Square API] Payment created:", {
+      paymentId: result.payment?.id,
+      status: result.payment?.status,
+      amount: result.payment?.amountMoney,
+    });
+
     return {
       payment: result.payment,
     };
   } catch (error: any) {
+    console.error("[Square API] Payment creation error:", error);
     const squareError = extractSquareError(error);
+
+    // Log detailed error information
+    console.error("[Square API] Square error details:", {
+      statusCode: squareError.statusCode,
+      message: squareError.message,
+      errors: squareError.errors,
+      isAuthError: squareError.isAuthError,
+    });
+
     throw {
       statusCode: squareError.statusCode || 500,
       status: squareError.statusCode || 500,
       message: squareError.message,
       errors: squareError.errors || [],
+      detail: squareError.errors?.[0]?.detail || squareError.message,
     };
   }
 }

@@ -78,6 +78,12 @@ export default function MenuPage() {
   const router = useRouter();
   const { status } = useSession();
   const isAuthenticated = status === "authenticated";
+  
+  // Update page title
+  useEffect(() => {
+    document.title = "Menu | Hooligans";
+  }, []);
+
   const [visibleCategory, setVisibleCategory] = useState("all"); // For scroll tracking
   const [filterCategory, setFilterCategory] = useState("all"); // For filtering (optional future use)
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -86,6 +92,7 @@ export default function MenuPage() {
   const [isManualScroll, setIsManualScroll] = useState(false);
   const [itemModifiers, setItemModifiers] = useState<Map<string | number, SelectedModifier[]>>(new Map());
   const [itemComments, setItemComments] = useState<Map<string | number, string>>(new Map());
+  const [openModifierItemId, setOpenModifierItemId] = useState<string | number | null>(null);
   const categoryRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const categoryPillsRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -254,12 +261,14 @@ export default function MenuPage() {
     } else {
       newCart = [...currentCart, {
         id: itemKey,
+        originalItemId: item.id, // Store base item ID for Square catalog matching
         name: item.name,
         price: totalPrice,
         basePrice: item.price,
         quantity: 1,
         modifiers: modifiers.length > 0 ? modifiers : undefined,
         comment: comment,
+        square_id: item.square_id, // Store Square catalog ID for POS integration
       }];
     }
     
@@ -626,61 +635,72 @@ export default function MenuPage() {
                             ${item.price.toFixed(2)}
                           </p>
                           
-                          {/* Modifier Selector */}
-                          {item.modifierLists && item.modifierLists.length > 0 && (
-                            <ModifierSelector
-                              item={item}
-                              onModifiersChange={(modifiers, comment) => handleModifiersChange(item.id, modifiers, comment)}
-                            />
+                          {/* Modifier Selector - Only show when opened */}
+                          {openModifierItemId === item.id && (
+                            <div className="mt-3">
+                              {item.modifierLists && item.modifierLists.length > 0 ? (
+                                <ModifierSelector
+                                  item={item}
+                                  onModifiersChange={(modifiers, comment) => handleModifiersChange(item.id, modifiers, comment)}
+                                  onAddToCart={() => {
+                                    handleAddToCartClick(item);
+                                    setOpenModifierItemId(null); // Close after adding
+                                  }}
+                                />
+                              ) : (
+                                // For items without modifiers, show simple add button
+                                <div className="mt-3 pt-3 border-t">
+                                  <Button
+                                    onClick={() => {
+                                      handleAddToCartClick(item);
+                                      setOpenModifierItemId(null);
+                                    }}
+                                    disabled={!item.available}
+                                    className="w-full bg-teal hover:bg-teal-dark text-white"
+                                  >
+                                    Add to Cart
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Show quantity if item is in cart */}
+                          {quantity > 0 && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-sm text-gray-600">In cart: {quantity}</span>
+                              <Button
+                                onClick={() => removeFromCart(item.id)}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                Remove
+                              </Button>
+                            </div>
                           )}
                         </div>
 
-                        {/* Add/Remove Controls */}
+                        {/* Customize/Add Button */}
                         <div className="flex items-end">
-                          {(() => {
-                            // Check if required modifiers are selected
-                            const modifiers = itemModifiers.get(item.id) || [];
-                            const hasRequiredModifiers = item.modifierLists
-                              ? item.modifierLists.every((modifierList) => {
-                                  if (modifierList.required) {
-                                    return modifiers.some(m => m.modifierListId === modifierList.id);
-                                  }
-                                  return true;
-                                })
-                              : true;
-                            const canAddToCart = item.available && hasRequiredModifiers;
-
-                            return quantity === 0 ? (
-                              <Button
-                                onClick={() => handleAddToCartClick(item)}
-                                disabled={!canAddToCart}
-                                className="bg-teal hover:bg-teal-dark text-white rounded-full w-10 h-10 p-0 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                                title={!hasRequiredModifiers ? "Please select required options" : ""}
-                              >
-                                <Plus className="w-5 h-5" />
-                              </Button>
-                            ) : (
-                              <div className="flex items-center gap-2 bg-teal rounded-full px-1 py-1">
-                                <Button
-                                  onClick={() => removeFromCart(item.id)}
-                                  className="bg-white text-teal hover:bg-gray-100 rounded-full w-8 h-8 p-0"
-                                >
-                                  <Minus className="w-4 h-4" />
-                                </Button>
-                                <span className="text-white font-bold w-6 text-center">
-                                  {quantity}
-                                </span>
-                                <Button
-                                  onClick={() => handleAddToCartClick(item)}
-                                  disabled={!canAddToCart}
-                                  className="bg-white text-teal hover:bg-gray-100 rounded-full w-8 h-8 p-0 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                                  title={!hasRequiredModifiers ? "Please select required options" : ""}
-                                >
-                                  <Plus className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            );
-                          })()}
+                          <Button
+                            onClick={() => {
+                              if (openModifierItemId === item.id) {
+                                setOpenModifierItemId(null); // Close if already open
+                              } else {
+                                setOpenModifierItemId(item.id); // Open this item's modifiers
+                              }
+                            }}
+                            disabled={!item.available}
+                            className={`rounded-full w-10 h-10 p-0 transition-all ${
+                              openModifierItemId === item.id
+                                ? "bg-teal-dark text-white"
+                                : "bg-teal hover:bg-teal-dark text-white"
+                            } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+                            title={!item.available ? "This item is unavailable" : "Customize & Add"}
+                          >
+                            <Plus className="w-5 h-5" />
+                          </Button>
                         </div>
                       </div>
                     );

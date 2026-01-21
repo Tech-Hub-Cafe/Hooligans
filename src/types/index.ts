@@ -57,10 +57,12 @@ export interface Order {
 
 export interface CartItem {
   id: number | string;
+  originalItemId?: number | string; // Base item ID from menu (for matching with Square catalog)
   name: string;
   price: number;
   quantity: number;
   modifiers?: SelectedModifier[];
   basePrice?: number; // Original item price before modifiers
   comment?: string; // Special instructions/notes for this item
+  square_id?: string; // Square catalog object ID
 }

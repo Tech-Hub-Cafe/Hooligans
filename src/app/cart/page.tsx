@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,16 +20,23 @@ import {
   CreditCard,
   Edit,
   LogIn,
+  AlertCircle,
 } from "lucide-react";
 import { CartItem, MenuItem } from "@/types";
 import Link from "next/link";
 import SquarePaymentForm from "@/components/checkout/SquarePaymentForm";
 import { getCart, setCart, clearCart } from "@/lib/cartStorage";
 import EditCartItemDialog from "@/components/cart/EditCartItemDialog";
+import { getItemType } from "@/lib/itemCategory";
 
 export default function CartPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+
+  // Update page title
+  useEffect(() => {
+    document.title = "Cart | Hooligans";
+  }, []);
   const isAuthenticated = status === "authenticated";
   const [cartItems, setCartItemsState] = useState<CartItem[]>([]);
   const [customerInfo, setCustomerInfo] = useState({
@@ -46,6 +54,52 @@ export default function CartPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [isLoadingMenu, setIsLoadingMenu] = useState(false);
   const [continueAsGuest, setContinueAsGuest] = useState<boolean | null>(null); // null = not chosen, true = guest, false = login
+
+  // Fetch ordering availability
+  const { data: orderingStatus } = useQuery({
+    queryKey: ["ordering-availability"],
+    queryFn: async () => {
+      const res = await fetch("/api/ordering-time");
+      if (!res.ok) throw new Error("Failed to fetch ordering status");
+      return res.json();
+    },
+    refetchInterval: 60000, // Refetch every minute to update status
+    staleTime: 30000, // Consider data fresh for 30 seconds
+  });
+
+  // Check ordering availability for each cart item
+  const getItemOrderingStatus = (item: CartItem) => {
+    if (!orderingStatus) return { isAvailable: true, message: "" };
+    
+    const itemType = getItemType(item as MenuItem);
+    const status = itemType === "drinks" ? orderingStatus.drinks : orderingStatus.food;
+    
+    return {
+      isAvailable: status?.isOrderingAvailable ?? true,
+      message: status?.message || "",
+    };
+  };
+
+  // Check if all items are orderable
+  const allItemsOrderable = cartItems.every(item => getItemOrderingStatus(item).isAvailable);
+  const unavailableItems = cartItems.filter(item => !getItemOrderingStatus(item).isAvailable);
+  
+  // Get messages for food and drinks separately
+  const foodStatus = orderingStatus?.food;
+  const drinksStatus = orderingStatus?.drinks;
+  
+  // Determine overall ordering availability
+  // Ordering is available if at least one type (food or drinks) is available
+  const isOrderingAvailable = foodStatus?.isOrderingAvailable || drinksStatus?.isOrderingAvailable || false;
+  
+  // Get the appropriate message to display
+  // If some items can't be ordered, show that message
+  // Otherwise, if ordering is closed, show the general message
+  const orderingMessage = !allItemsOrderable && unavailableItems.length > 0
+    ? `Some items in your cart cannot be ordered at this time: ${unavailableItems.map(i => i.name).join(", ")}`
+    : !isOrderingAvailable
+    ? foodStatus?.message || drinksStatus?.message || "Ordering is currently closed."
+    : "";
 
   // Pre-fill form with session data
   useEffect(() => {
@@ -70,7 +124,7 @@ export default function CartPage() {
     setFormValid(isValid);
   }, [customerInfo]);
 
-  const updateQuantity = (itemId: number, change: number) => {
+  const updateQuantity = (itemId: number | string, change: number) => {
     const updatedCart = cartItems
       .map((item) =>
         item.id === itemId
@@ -83,7 +137,7 @@ export default function CartPage() {
     setCartItemsState(updatedCart);
   };
 
-  const removeItem = (itemId: number) => {
+  const removeItem = (itemId: number | string) => {
     const updatedCart = cartItems.filter((item) => item.id !== itemId);
     setCart(updatedCart, isAuthenticated);
     setCartItemsState(updatedCart);
@@ -194,17 +248,29 @@ export default function CartPage() {
     return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
+  // Calculate orderable items (items within ordering hours) and their total
+  const orderableItems = cartItems.filter(item => getItemOrderingStatus(item).isAvailable);
+  const orderableTotal = orderableItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
   const handlePaymentSuccess = async (paymentToken: string) => {
     setError("");
 
+    // Validate that we have orderable items before proceeding
+    if (orderableItems.length === 0) {
+      setError("No items in your cart can be ordered at this time. Please try again during ordering hours.");
+      setIsProcessing(false);
+      return;
+    }
+
     try {
-      // Create order first
+      // Create order with only orderable items (items within ordering hours)
+      // The API will validate each item again as a double-check
       const orderData = {
         customer_name: customerInfo.name,
         customer_email: customerInfo.email,
         customer_phone: customerInfo.phone || null,
-        items: cartItems,
-        total: calculateTotal(),
+        items: orderableItems, // Only send items that are within ordering hours
+        total: orderableTotal, // Use the total for orderable items only
         special_instructions: customerInfo.instructions || null,
         user_id: session?.user?.id || null,
       };
@@ -216,7 +282,12 @@ export default function CartPage() {
       });
 
       if (!orderResponse.ok) {
-        throw new Error("Failed to create order");
+        const errorData = await orderResponse.json().catch(() => ({}));
+        // If it's a 403 (ordering closed), show the specific message
+        if (orderResponse.status === 403) {
+          throw new Error(errorData.error || "Ordering is currently closed");
+        }
+        throw new Error(errorData.error || "Failed to create order");
       }
 
       const order = await orderResponse.json();
@@ -228,16 +299,32 @@ export default function CartPage() {
         body: JSON.stringify({
           sourceId: paymentToken,
           orderId: order.id,
-          amount: calculateTotal(),
+          amount: orderableTotal,
           customerEmail: customerInfo.email,
           customerName: customerInfo.name,
+          orderItems: orderableItems, // Send only orderable items to create Square Order
+          specialInstructions: customerInfo.instructions || null,
         }),
       });
 
       const paymentResult = await paymentResponse.json();
 
+      console.log("[Cart] Payment response:", {
+        success: paymentResult.success,
+        status: paymentResult.status,
+        error: paymentResult.error,
+        details: paymentResult.details,
+      });
+
       if (!paymentResult.success) {
-        throw new Error(paymentResult.error || "Payment failed");
+        // Provide more detailed error message
+        const errorMsg = paymentResult.error || "Payment failed";
+        const details = paymentResult.details 
+          ? (Array.isArray(paymentResult.details) 
+              ? paymentResult.details.map((e: any) => e.detail || e.message).join(", ")
+              : JSON.stringify(paymentResult.details))
+          : "";
+        throw new Error(details ? `${errorMsg}: ${details}` : errorMsg);
       }
 
       // Clear cart from appropriate storage
@@ -558,6 +645,21 @@ export default function CartPage() {
                   )}
 
                   <div className="space-y-4">
+                    {/* Ordering Time Status */}
+                    {(!isOrderingAvailable || !allItemsOrderable) && orderingMessage && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-semibold mb-1">
+                              {!allItemsOrderable ? "Some Items Cannot Be Ordered" : "Ordering is Currently Closed"}
+                            </p>
+                            <p className="text-sm">{orderingMessage}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {error && (
                       <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
                         {error}
@@ -647,13 +749,57 @@ export default function CartPage() {
 
                         {/* Square Payment Form */}
                         <div className="pt-4">
-                          {formValid ? (
+                          {orderableItems.length === 0 ? (
+                            <div className="text-center p-4 bg-gray-50 rounded-lg border border-gray-200">
+                              <p className="text-sm text-gray-600 font-medium mb-1">
+                                Ordering is currently closed for all items
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                Please try again during ordering hours
+                              </p>
+                            </div>
+                          ) : !allItemsOrderable && unavailableItems.length > 0 ? (
+                            <div className="space-y-4">
+                              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                <p className="text-sm text-amber-800 font-medium mb-2">
+                                  Some items cannot be ordered at this time
+                                </p>
+                                <ul className="text-xs text-amber-700 list-disc list-inside space-y-1">
+                                  {unavailableItems.map((item) => (
+                                    <li key={item.id}>
+                                      {item.name} - {getItemOrderingStatus(item).message}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="text-xs text-amber-700 mt-2">
+                                  Only orderable items will be processed. Total: ${orderableTotal.toFixed(2)}
+                                </p>
+                              </div>
+                              {formValid ? (
+                                <SquarePaymentForm
+                                  amount={orderableTotal}
+                                  onPaymentSuccess={handlePaymentSuccess}
+                                  onPaymentError={handlePaymentError}
+                                  isProcessing={isProcessing}
+                                  setIsProcessing={setIsProcessing}
+                                  cartItems={orderableItems}
+                                />
+                              ) : (
+                                <div className="text-center p-4 bg-gray-50 rounded-lg">
+                                  <p className="text-sm text-gray-500">
+                                    Please fill in your name and email to proceed with payment
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          ) : formValid ? (
                             <SquarePaymentForm
-                              amount={calculateTotal()}
+                              amount={orderableTotal}
                               onPaymentSuccess={handlePaymentSuccess}
                               onPaymentError={handlePaymentError}
                               isProcessing={isProcessing}
                               setIsProcessing={setIsProcessing}
+                              cartItems={orderableItems}
                             />
                           ) : (
                             <div className="text-center p-4 bg-gray-50 rounded-lg">

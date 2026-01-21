@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -71,6 +71,10 @@ async function fetchOrders(): Promise<Order[]> {
 }
 
 export default function AdminOrdersPage() {
+  // Update page title
+  useEffect(() => {
+    document.title = "Orders Management | Hooligans Admin";
+  }, []);
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");

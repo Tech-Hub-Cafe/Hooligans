@@ -37,6 +37,11 @@ async function fetchUserOrders(userId: string): Promise<Order[]> {
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
+
+  // Update page title
+  useEffect(() => {
+    document.title = "Profile | Hooligans";
+  }, []);
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
 

@@ -1,0 +1,224 @@
+import { NextResponse } from "next/server";
+import { createPayment, createSquareOrder, dollarsToSquareMoney } from "@/lib/square";
+import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { randomUUID } from "crypto";
+
+interface Order {
+  id: number;
+  total: number;
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const {
+      sourceId, // Payment token from Square Web Payments SDK
+      orderId,
+      amount,
+      customerEmail,
+      customerName,
+      orderItems, // Cart items to create Square Order
+      specialInstructions, // Special instructions for the order
+    } = body;
+
+    if (!sourceId || !amount) {
+      return NextResponse.json(
+        { error: "Missing required payment information" },
+        { status: 400 }
+      );
+    }
+
+    // Get user session if available
+    const session = await auth();
+    const userId = session?.user?.id || null;
+
+    // If Square is configured, process payment through Square
+    if (process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID) {
+      try {
+        const paymentResponse = await createPayment({
+          sourceId,
+          idempotencyKey: randomUUID(),
+          amountMoney: {
+            amount: dollarsToSquareMoney(amount),
+            currency: "AUD", // Australia uses AUD, not USD
+          },
+          locationId: process.env.SQUARE_LOCATION_ID!,
+          buyerEmailAddress: customerEmail,
+          note: `Order for ${customerName}`,
+        });
+
+        const payment = paymentResponse.payment;
+        console.log("[Payment API] Payment response:", {
+          paymentId: payment?.id,
+          status: payment?.status,
+          amount: payment?.amountMoney,
+          currency: payment?.amountMoney?.currency,
+        });
+
+        // Square payment statuses: APPROVED, COMPLETED, CANCELED, FAILED, PENDING
+        // APPROVED means payment was successful but not yet captured (for card payments, this is fine)
+        if (payment?.status === "COMPLETED" || payment?.status === "APPROVED") {
+          // Create Square Order to send to POS/Printer
+          let squareOrderId = null;
+          if (orderItems && Array.isArray(orderItems) && orderItems.length > 0) {
+            try {
+              // Convert cart items to Square Order line items
+              const lineItems = orderItems.map((item: any) => {
+                const lineItem: any = {
+                  name: item.name,
+                  quantity: item.quantity.toString(),
+                };
+
+                // Add catalog object ID if available (from square_id)
+                if (item.square_id || item.originalItemId) {
+                  const catalogId = item.square_id || item.originalItemId;
+                  // Extract base ID if it's a composite ID
+                  const baseId = typeof catalogId === 'string' && catalogId.includes('-') 
+                    ? catalogId.split('-')[0] 
+                    : catalogId;
+                  lineItem.catalogObjectId = baseId.toString();
+                }
+
+                // Add base price
+                const basePrice = item.basePrice || item.price - (item.modifiers?.reduce((sum: number, m: any) => sum + (m.modifierPrice || 0), 0) || 0);
+                lineItem.basePriceMoney = {
+                  amount: BigInt(dollarsToSquareMoney(basePrice)),
+                  currency: "AUD",
+                };
+
+                // Add modifiers if any
+                if (item.modifiers && item.modifiers.length > 0) {
+                  lineItem.modifiers = item.modifiers.map((mod: any) => ({
+                    catalogObjectId: mod.modifierId || mod.modifierListId,
+                    name: `${mod.modifierListName}: ${mod.modifierName}`,
+                    basePriceMoney: {
+                      amount: BigInt(dollarsToSquareMoney(mod.modifierPrice || 0)),
+                      currency: "AUD",
+                    },
+                  }));
+                }
+
+                // Add item comment if available
+                if (item.comment) {
+                  lineItem.note = item.comment;
+                }
+
+                return lineItem;
+              });
+
+              const squareOrderResponse = await createSquareOrder({
+                locationId: process.env.SQUARE_LOCATION_ID!,
+                lineItems,
+                customerNote: specialInstructions || `Order for ${customerName}`,
+                referenceId: orderId ? `ORDER-${orderId}` : undefined,
+              });
+
+              squareOrderId = squareOrderResponse.order?.id;
+              console.log("[Payment API] Square Order created for POS:", {
+                squareOrderId,
+                orderId: squareOrderResponse.order?.id,
+              });
+            } catch (orderError: any) {
+              // Log error but don't fail payment - order creation in Square is optional
+              console.error("[Payment API] Failed to create Square Order (non-fatal):", {
+                error: orderError.message,
+                statusCode: orderError.statusCode,
+                details: orderError.errors,
+              });
+              // Continue - payment succeeded even if Square Order creation failed
+            }
+          }
+
+          // Update order status in database
+          if (orderId) {
+            await prisma.order.update({
+              where: { id: orderId },
+              data: {
+                status: "paid",
+                square_payment_id: payment.id,
+                // Store Square Order ID if available
+                ...(squareOrderId && {
+                  // Note: We might need to add square_order_id to schema if not exists
+                }),
+              },
+            });
+          }
+
+          return NextResponse.json({
+            success: true,
+            paymentId: payment.id,
+            status: payment.status,
+            squareOrderId: squareOrderId,
+          });
+        } else {
+          // Payment failed or in unexpected status
+          const errorDetails = payment?.status 
+            ? `Payment status: ${payment.status}. Expected COMPLETED or APPROVED.`
+            : "Payment status is missing";
+          
+          console.error("[Payment API] Payment not in expected status:", {
+            status: payment?.status,
+            payment: payment,
+          });
+
+          return NextResponse.json(
+            { 
+              error: "Payment not completed",
+              status: payment?.status,
+              details: errorDetails,
+              payment: payment,
+            },
+            { status: 400 }
+          );
+        }
+      } catch (squareError: unknown) {
+        console.error("[Payment API] Square payment error:", squareError);
+        
+        // Extract detailed error information
+        let errorMessage = "Payment processing failed";
+        let statusCode = 500;
+        let errorDetails: any = null;
+        
+        if (squareError && typeof squareError === 'object') {
+          const err = squareError as any;
+          errorMessage = err.message || err.detail || errorMessage;
+          statusCode = err.statusCode || err.status || statusCode;
+          errorDetails = err.errors || null;
+        } else if (squareError instanceof Error) {
+          errorMessage = squareError.message;
+        }
+        
+        console.error("[Payment API] Error details:", {
+          message: errorMessage,
+          statusCode,
+          errors: errorDetails,
+        });
+        
+        return NextResponse.json(
+          { 
+            error: errorMessage,
+            details: errorDetails,
+            statusCode,
+          },
+          { status: statusCode }
+        );
+      }
+    }
+
+    // Demo mode - simulate payment success
+    return NextResponse.json({
+      success: true,
+      paymentId: `demo_${randomUUID()}`,
+      status: "COMPLETED",
+      demo: true,
+    });
+  } catch (error) {
+    console.error("Payment error:", error);
+    return NextResponse.json(
+      { error: "Payment processing failed" },
+      { status: 500 }
+    );
+  }
+}
+

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CreditCard, Loader2, Lock, Smartphone } from "lucide-react";
+import { getItemTypeFromCategory } from "@/lib/itemCategory";
 
 declare global {
   interface Window {
@@ -58,6 +60,7 @@ interface SquarePaymentFormProps {
   onPaymentError: (error: string) => void;
   isProcessing: boolean;
   setIsProcessing: (processing: boolean) => void;
+  cartItems?: Array<{ category?: string; name: string }>; // Optional: for validating ordering time by item type
 }
 
 export default function SquarePaymentForm({
@@ -66,26 +69,50 @@ export default function SquarePaymentForm({
   onPaymentError,
   isProcessing,
   setIsProcessing,
+  cartItems = [],
 }: SquarePaymentFormProps) {
   const cardRef = useRef<Card | null>(null);
   const applePayRef = useRef<ApplePay | null>(null);
   const googlePayRef = useRef<GooglePay | null>(null);
   const isInitializingRef = useRef(false); // Prevent duplicate initializations
   const initializedRef = useRef(false); // Track if already initialized
-  
+  const isMountedRef = useRef(true); // Track if component is mounted
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track retry timeout
+
+  // Create a unique ID for this instance to prevent collisions
+  const containerId = useRef(`card-container-${Math.random().toString(36).substring(2, 9)}`).current;
+
   const [isSquareLoaded, setIsSquareLoaded] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const [applePayReady, setApplePayReady] = useState(false);
   const [googlePayReady, setGooglePayReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [locationCountry, setLocationCountry] = useState<string | null>(null);
-  const [postalCodeRequired, setPostalCodeRequired] = useState(false);
+  // const [postalCodeRequired, setPostalCodeRequired] = useState(false); // Deprecated: forcing postalCode: false
+
+  // Logging utility
+  const log = {
+    debug: (message: string, ...args: any[]) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[SquarePayment] ${message}`, ...args);
+      }
+    },
+    info: (message: string, ...args: any[]) => {
+      console.log(`[SquarePayment] ${message}`, ...args);
+    },
+    warn: (message: string, ...args: any[]) => {
+      console.warn(`[SquarePayment] ${message}`, ...args);
+    },
+    error: (message: string, error?: any) => {
+      console.error(`[SquarePayment] ${message}`, error || '');
+    },
+  };
 
   const appId = process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID;
   const locationId = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID;
 
   // Check if Square is configured
-  const isSquareConfigured = appId && locationId;
+  const isSquareConfigured = !!(appId && locationId);
 
   // Determine Square environment for SDK URL
   const getSquareSDKUrl = () => {
@@ -96,6 +123,14 @@ export default function SquarePaymentForm({
     return "https://sandbox.web.squarecdn.com/v1/square.js";
   };
 
+  // Set mounted flag on mount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Load Square SDK
   useEffect(() => {
     if (!isSquareConfigured) {
@@ -104,33 +139,45 @@ export default function SquarePaymentForm({
     }
 
     if (typeof window !== 'undefined') {
-      const isLocalhost = window.location.hostname === 'localhost' || 
-                         window.location.hostname === '127.0.0.1' ||
-                         window.location.hostname.startsWith('192.168.');
+      const isLocalhost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.startsWith('192.168.');
       const isSecure = window.location.protocol === 'https:';
-      
+
       if (!isSecure && !isLocalhost) {
         setError("Payment forms require a secure connection (HTTPS). Please access this page over HTTPS.");
-        console.warn("[Square Payment] Page is not served over HTTPS. Payment forms may not work correctly.");
+        log.warn("Page is not served over HTTPS. Payment forms may not work correctly.");
       }
     }
 
     const script = document.createElement("script");
     script.src = getSquareSDKUrl();
-    script.onload = () => setIsSquareLoaded(true);
+    script.onload = () => {
+      if (isMountedRef.current) {
+        setIsSquareLoaded(true);
+      }
+    };
     script.onerror = () => {
-      setError("Failed to load payment system. Please ensure you're using HTTPS.");
-      onPaymentError("Failed to load payment system");
+      if (isMountedRef.current) {
+        setError("Failed to load payment system. Please ensure you're using HTTPS.");
+        onPaymentError("Failed to load payment system");
+      }
     };
     document.body.appendChild(script);
 
     return () => {
+      isMountedRef.current = false;
+      // Clear any pending retries
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       // Cleanup payment methods
       if (cardRef.current) {
         try {
           cardRef.current.destroy();
         } catch (e) {
-          console.warn("[Square Payment] Error destroying card:", e);
+          log.warn("Error destroying card:", e);
         }
         cardRef.current = null;
       }
@@ -138,7 +185,7 @@ export default function SquarePaymentForm({
         try {
           applePayRef.current.destroy();
         } catch (e) {
-          console.warn("[Square Payment] Error destroying Apple Pay:", e);
+          log.warn("Error destroying Apple Pay:", e);
         }
         applePayRef.current = null;
       }
@@ -146,7 +193,7 @@ export default function SquarePaymentForm({
         try {
           googlePayRef.current.destroy();
         } catch (e) {
-          console.warn("[Square Payment] Error destroying Google Pay:", e);
+          log.warn("Error destroying Google Pay:", e);
         }
         googlePayRef.current = null;
       }
@@ -175,15 +222,15 @@ export default function SquarePaymentForm({
           const data = await response.json();
           const country = data.location?.country;
           setLocationCountry(country || null);
-          
+
           // Countries that require postal codes
           const requiresPostalCode = ['US', 'CA', 'GB', 'MX'];
-          setPostalCodeRequired(requiresPostalCode.includes(country));
-          
-          console.log("[Square Payment] Location country:", country, "Postal code required:", requiresPostalCode.includes(country));
+          // setPostalCodeRequired(requiresPostalCode.includes(country));
+
+          log.debug("Location country:", country);
         }
       } catch (err) {
-        console.error("[Square Payment] Failed to fetch location country:", err);
+        log.error("Failed to fetch location country", err);
         // Continue without country info
       }
     }
@@ -194,150 +241,280 @@ export default function SquarePaymentForm({
   // Initialize payment methods
   useEffect(() => {
     if (!isSquareLoaded || !window.Square || !appId || !locationId) return;
-    
-    // Prevent multiple initializations
+    if (!isSquareConfigured) return; // Don't initialize if Square is not configured
+
+    // Prevent multiple initializations (but this ref alone isn't enough for Strict Mode race conditions)
     if (initializedRef.current || isInitializingRef.current) {
-      console.log("[Square Payment] Payment methods already initialized or initializing, skipping...");
+      log.debug("Payment methods already initialized or initializing, skipping...");
       return;
     }
 
     // Check if card container already has Square's form attached
-    const cardContainer = document.getElementById("card-container");
-    if (cardContainer && cardContainer.querySelector('.sq-card-input')) {
-      console.log("[Square Payment] Card form already exists in DOM, skipping initialization");
+    const existingContainer = document.getElementById(containerId);
+    if (existingContainer?.querySelector('.sq-card-input')) {
+      log.debug("Card form already exists in DOM, skipping initialization");
       setCardReady(true);
       initializedRef.current = true;
       return;
     }
 
+    let isCancelled = false;
     isInitializingRef.current = true;
 
     async function initializePayments() {
       try {
-        console.log("[Square Payment] Initializing payment methods...");
+        log.info("Initializing payment methods...");
+
+        // Wait for card container to be available
+        // Update waitForCardContainer to use the unique ID
+        const waitForContainer = async (maxRetries = 10, delay = 200): Promise<HTMLElement | null> => {
+          for (let attempt = 0; attempt < maxRetries; attempt++) {
+            if (isCancelled) return null;
+            const container = document.getElementById(containerId);
+            if (container) return container;
+            if (attempt < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+          return null;
+        };
+
+        const cardContainer = await waitForContainer();
+
+        if (isCancelled) {
+          log.debug("Initialization cancelled");
+          isInitializingRef.current = false;
+          return;
+        }
+
+        if (!cardContainer) {
+          if (!isMountedRef.current) {
+            log.debug("Component unmounted during initialization, aborting");
+            isInitializingRef.current = false;
+            return;
+          }
+          log.error("Card container not found after retries");
+          setError("Payment form is not ready. Please refresh the page if this persists.");
+          isInitializingRef.current = false;
+          return;
+        }
 
         const payments = await window.Square!.payments(appId!, locationId!);
-        console.log("[Square Payment] Payments instance created");
+        if (isCancelled) return;
+
+        log.debug("Payments instance created");
 
         // Initialize Card Payment
         try {
           // Clear any existing content in card container
-          const cardContainer = document.getElementById("card-container");
-          if (cardContainer) {
-            cardContainer.innerHTML = ''; // Clear any duplicate forms
-          }
+          cardContainer.innerHTML = ''; // Clear any duplicate forms
 
           let card;
-          
-          // For Australia, try to disable postal code
-          // Note: Square may still show postal code field based on location settings
-          if (locationCountry === 'AU') {
-            try {
-              card = await payments.card({ postalCode: false });
-              console.log("[Square Payment] Card created with postalCode: false (for Australia)");
-            } catch (configError: any) {
-              console.warn("[Square Payment] postalCode: false not supported, using default:", configError);
-              // If postalCode: false fails, Square location might require it
-              card = await payments.card();
-              console.log("[Square Payment] Card created with default settings - postal code may be required by Square");
-            }
-          } else if (!postalCodeRequired && locationCountry && locationCountry !== 'US' && locationCountry !== 'CA' && locationCountry !== 'GB') {
-            // For other non-postal-code countries
-            try {
-              card = await payments.card({ postalCode: false });
-              console.log("[Square Payment] Card created with postalCode: false");
-            } catch (configError: any) {
-              card = await payments.card();
-              console.log("[Square Payment] Card created with default settings");
-            }
-          } else {
-            // Location requires postal code - use default
+
+          // Determine if we are in Sandbox
+          const isSandbox = appId?.startsWith('sandbox');
+
+          if (isSandbox) {
+            // SANDBOX: Use default settings (often requires postal code)
+            log.debug("Sandbox detected - enabling default fields (including postal code) for testing.");
             card = await payments.card();
-            console.log("[Square Payment] Card created with default settings (postal code required for", locationCountry, ")");
+          } else {
+            // PRODUCTION: For Australia, force disable postal code
+            if (locationCountry === 'AU') {
+              try {
+                card = await payments.card({
+                  postalCode: false // Force disable for AU Production
+                });
+                if (isCancelled) return;
+                log.debug("Production (AU): Card created with postalCode: false");
+              } catch (e) {
+                log.warn("Failed to force disable postal code in production:", e);
+                card = await payments.card();
+              }
+            } else {
+              // Production non-AU: Default behavior
+              card = await payments.card();
+            }
           }
-          
-          await card.attach("#card-container");
+
+          if (isCancelled) {
+            if (card) await card.destroy();
+            return;
+          }
+
+          // Double-check container still exists before attaching (component might have unmounted)
+          const finalContainer = document.getElementById(containerId);
+          if (!finalContainer) {
+            log.error("Card container disappeared before attach");
+            setError("Payment form container is not available. Please refresh the page.");
+            isInitializingRef.current = false;
+            return;
+          }
+
+          await card.attach(`#${containerId}`);
+
+          if (isCancelled) {
+            await card.destroy();
+            return;
+          }
+
           cardRef.current = card;
           setCardReady(true);
           initializedRef.current = true;
           isInitializingRef.current = false;
-          console.log("[Square Payment] Card form ready");
+          log.info("Card form ready");
         } catch (cardError: any) {
-          console.error("[Square Payment] Failed to initialize card:", cardError);
-          setError(`Failed to initialize card form: ${cardError.message || "Unknown error"}`);
+          log.error("Failed to initialize card", cardError);
+          // Don't show error to user if component is unmounted (likely due to ordering time)
+          if (!isCancelled && isMountedRef.current) {
+            setError(`Failed to initialize card form: ${cardError.message || "Unknown error"}`);
+          }
           isInitializingRef.current = false;
         }
 
         // Initialize Apple Pay
+        // (Similar checks for isCancelled)
         try {
+          if (isCancelled) return;
           const applePay = await payments.applePay({
             countryCode: "AU", // Australia
             currencyCode: "AUD",
           });
-          
+
           // Check if Apple Pay is available
-          const applePayAvailable = await applePay.canTokenize();
+          const applePayAvailable = await (applePay as any).canTokenize();
           if (applePayAvailable) {
+            if (isCancelled) {
+              await applePay.destroy();
+              return;
+            }
             await applePay.attach("#apple-pay-button");
             applePayRef.current = applePay;
             setApplePayReady(true);
-            console.log("[Square Payment] Apple Pay ready");
+            log.debug("Apple Pay ready");
           } else {
-            console.log("[Square Payment] Apple Pay not available on this device");
+            log.debug("Apple Pay not available on this device");
           }
         } catch (applePayError: any) {
-          console.log("[Square Payment] Apple Pay initialization failed (may not be available):", applePayError.message);
+          log.debug("Apple Pay initialization failed (may not be available):", applePayError.message);
           // Apple Pay might not be available - that's okay
         }
 
         // Initialize Google Pay
         try {
+          if (isCancelled) return;
           const googlePay = await payments.googlePay({
             countryCode: "AU", // Australia
             currencyCode: "AUD",
           });
-          
+
           // Check if Google Pay is available
-          const googlePayAvailable = await googlePay.canTokenize();
+          const googlePayAvailable = await (googlePay as any).canTokenize();
           if (googlePayAvailable) {
+            if (isCancelled) {
+              await googlePay.destroy();
+              return;
+            }
             await googlePay.attach("#google-pay-button");
             googlePayRef.current = googlePay;
             setGooglePayReady(true);
-            console.log("[Square Payment] Google Pay ready");
+            log.debug("Google Pay ready");
           } else {
-            console.log("[Square Payment] Google Pay not available on this device");
+            log.debug("Google Pay not available on this device");
           }
         } catch (googlePayError: any) {
-          console.log("[Square Payment] Google Pay initialization failed (may not be available):", googlePayError.message);
+          log.debug("Google Pay initialization failed (may not be available):", googlePayError.message);
           // Google Pay might not be available - that's okay
         }
 
       } catch (e: any) {
-        console.error("[Square Payment] Failed to initialize payments:", {
+        if (isCancelled) return;
+        log.error("Failed to initialize payments", {
           error: e,
           message: e?.message,
           stack: e?.stack,
         });
-        const errorMessage = e?.message || e?.toString() || "Unknown error";
-        setError(`Failed to initialize payment form: ${errorMessage}`);
-        onPaymentError(`Payment form initialization failed: ${errorMessage}`);
+        // Only show error if component is still mounted
+        if (isMountedRef.current) {
+          const errorMessage = e?.message || e?.toString() || "Unknown error";
+          setError(`Failed to initialize payment form: ${errorMessage}`);
+          onPaymentError(`Payment form initialization failed: ${errorMessage}`);
+        }
         isInitializingRef.current = false;
       }
     }
 
     initializePayments();
-    
+
     // Cleanup function
     return () => {
+      isCancelled = true;
       isInitializingRef.current = false;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
     };
-  }, [isSquareLoaded, appId, locationId]); // Removed locationCountry and postalCodeRequired from dependencies to prevent re-initialization
+  }, [isSquareLoaded, appId, locationId, isSquareConfigured, locationCountry]);
+
+  // Check ordering availability
+  const { data: orderingStatus } = useQuery({
+    queryKey: ["ordering-availability"],
+    queryFn: async () => {
+      const res = await fetch("/api/ordering-time");
+      if (!res.ok) throw new Error("Failed to fetch ordering status");
+      return res.json();
+    },
+    staleTime: 30000, // Consider data fresh for 30 seconds
+  });
 
   const handlePayment = async (paymentMethod: 'card' | 'applePay' | 'googlePay' = 'card') => {
     setIsProcessing(true);
     setError(null);
 
     try {
+      // Check if ordering is available for each item type
+      if (orderingStatus && cartItems.length > 0) {
+        const unavailableTypes: string[] = [];
+
+        // Check each item's type
+        for (const item of cartItems) {
+          const itemType = getItemTypeFromCategory(item.category || "");
+          const status = itemType === "drinks" ? orderingStatus.drinks : orderingStatus.food;
+
+          if (status && !status.isOrderingAvailable) {
+            if (!unavailableTypes.includes(itemType)) {
+              unavailableTypes.push(itemType);
+            }
+          }
+        }
+
+        if (unavailableTypes.length > 0) {
+          const errorMsg = unavailableTypes.includes("food") && unavailableTypes.includes("drinks")
+            ? "Food and drinks ordering is currently closed"
+            : unavailableTypes.includes("food")
+              ? orderingStatus.food?.message || "Food ordering is currently closed"
+              : orderingStatus.drinks?.message || "Drinks ordering is currently closed";
+
+          setError(errorMsg);
+          onPaymentError(errorMsg);
+          setIsProcessing(false);
+          return;
+        }
+      } else if (orderingStatus && (!orderingStatus.food?.isOrderingAvailable || !orderingStatus.drinks?.isOrderingAvailable)) {
+        // Fallback: check general availability if no items provided
+        const errorMsg = !orderingStatus.food?.isOrderingAvailable && !orderingStatus.drinks?.isOrderingAvailable
+          ? "Ordering is currently closed"
+          : !orderingStatus.food?.isOrderingAvailable
+            ? orderingStatus.food?.message || "Food ordering is currently closed"
+            : orderingStatus.drinks?.message || "Drinks ordering is currently closed";
+
+        setError(errorMsg);
+        onPaymentError(errorMsg);
+        setIsProcessing(false);
+        return;
+      }
+
       if (!isSquareConfigured) {
         onPaymentSuccess("demo_token");
         return;
@@ -359,14 +536,23 @@ export default function SquarePaymentForm({
         onPaymentSuccess(result.token);
       } else {
         const errorMessage = result.errors?.[0]?.message || "Payment failed";
-        
+
         // Handle postal code validation error specifically
+        const isSandbox = appId?.startsWith('sandbox');
+
         if (errorMessage.toLowerCase().includes("postal code") || errorMessage.toLowerCase().includes("zip code")) {
-          const postalCodeError = locationCountry === 'AU' 
-            ? "Postal code validation failed. Your Square location may need to be set to Australia in Square Dashboard. For now, try entering '0000' as a temporary workaround."
-            : `Postal code validation failed. Please enter a valid postal code for ${locationCountry || 'your location'}.`;
-          setError(postalCodeError);
-          onPaymentError(postalCodeError);
+          // In Sandbox, just show the raw error to be helpful for debugging
+          if (isSandbox) {
+            setError(errorMessage);
+            onPaymentError(errorMessage);
+          } else {
+            // Production logic for AU
+            const postalCodeError = locationCountry === 'AU'
+              ? "Postal code validation failed. Your Square location may need to be set to Australia in Square Dashboard."
+              : `Postal code validation failed. Please enter a valid postal code for ${locationCountry || 'your location'}.`;
+            setError(postalCodeError);
+            onPaymentError(postalCodeError);
+          }
         } else {
           setError(errorMessage);
           onPaymentError(errorMessage);
@@ -411,7 +597,7 @@ export default function SquarePaymentForm({
         <div className="space-y-2">
           <label className="text-sm font-medium">Card Details</label>
           <div
-            id="card-container"
+            id={containerId}
             className="min-h-[50px] p-3 border rounded-lg bg-white"
           />
           {!cardReady && !error && (
@@ -424,7 +610,7 @@ export default function SquarePaymentForm({
       ) : (
         <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800">
-            <strong>Demo Mode:</strong> Square payment is not configured. 
+            <strong>Demo Mode:</strong> Square payment is not configured.
             Orders will be placed without real payment processing.
           </p>
         </div>
@@ -459,40 +645,27 @@ export default function SquarePaymentForm({
           <Lock className="w-3 h-3" />
           <span>Secured by Square</span>
         </div>
-        {typeof window !== 'undefined' && 
-         window.location.protocol !== 'https:' && 
-         window.location.hostname !== 'localhost' && 
-         !window.location.hostname.startsWith('192.168.') && (
-          <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
-            <p className="font-medium mb-1">⚠️ Security Notice</p>
-            <p>For secure payment processing, this page should be accessed over HTTPS. The payment form will still work, but some browser features may be limited.</p>
-          </div>
-        )}
-        {/* Postal Code Notice */}
-        {postalCodeRequired && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-            <p className="font-medium mb-1">⚠️ Postal Code Required</p>
-            <p className="mb-2">Your Square location is set to <strong>{locationCountry}</strong>, which requires a postal code for payments.</p>
-            <p className="mb-1"><strong>To fix this issue:</strong></p>
-            <ol className="list-decimal list-inside space-y-1 ml-2">
-              <li>Go to <a href="https://squareup.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline">Square Dashboard</a></li>
-              <li>Navigate to <strong>Locations</strong> → Select your location</li>
-              <li>Change the <strong>Country</strong> to <strong>Australia</strong></li>
-              <li>Save the changes</li>
-            </ol>
-            <p className="mt-2 text-red-600">Until you change this, you'll need to enter a valid postal code for {locationCountry}.</p>
-          </div>
-        )}
-        {!postalCodeRequired && locationCountry && locationCountry !== 'AU' && (
+        {typeof window !== 'undefined' &&
+          window.location.protocol !== 'https:' &&
+          window.location.hostname !== 'localhost' &&
+          !window.location.hostname.startsWith('192.168.') && (
+            <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+              <p className="font-medium mb-1">⚠️ Security Notice</p>
+              <p>For secure payment processing, this page should be accessed over HTTPS. The payment form will still work, but some browser features may be limited.</p>
+            </div>
+          )}
+        {/* Postal Code warnings removed as we are forcing postal code disable */
+          locationCountry === 'AU' && (
+            <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+              <p className="font-medium mb-1">✓ Location Set to Australia</p>
+              <p>Postal code field has been disabled for this location.</p>
+            </div>
+          )}
+        {/* Sandbox Notice */}
+        {appId?.startsWith('sandbox') && (
           <div className="p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-            <p className="font-medium mb-1">ℹ️ Location Country: {locationCountry}</p>
-            <p>Postal code is optional for your location. If you see a postal code field, you can leave it blank or enter any value.</p>
-          </div>
-        )}
-        {locationCountry === 'AU' && (
-          <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-            <p className="font-medium mb-1">✓ Location Set to Australia</p>
-            <p>Postal code is not required for Australian locations. If you see a postal code field, please contact support.</p>
+            <p className="font-medium mb-1">🛠️ Sandbox Mode</p>
+            <p><strong>Note:</strong> Valid postal code required for testing (e.g. <strong>12345</strong>).</p>
           </div>
         )}
       </div>

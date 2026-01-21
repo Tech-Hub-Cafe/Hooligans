@@ -10,32 +10,33 @@ datasource db {
 }
 
 model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique @db.VarChar(255)
-  password  String?   @db.VarChar(255) // NULL for OAuth users (Google)
-  name      String?   @db.VarChar(255)
-  phone     String?   @db.VarChar(50)
-  image     String?   @db.Text
-  provider  String    @default("credentials") @db.VarChar(50) // 'credentials' or 'google'
-  created_at DateTime  @default(now())
-  is_admin  Boolean   @default(false)
+  id         Int      @id @default(autoincrement())
+  email      String   @unique @db.VarChar(255)
+  password   String?  @db.VarChar(255) // NULL for OAuth users (Google)
+  name       String?  @db.VarChar(255)
+  phone      String?  @db.VarChar(50)
+  image      String?  @db.Text
+  provider   String   @default("credentials") @db.VarChar(50) // 'credentials' or 'google'
+  created_at DateTime @default(now())
+  is_admin   Boolean  @default(false)
 
   // Relations
-  orders    Order[]
+  orders                Order[]
+  password_reset_tokens PasswordResetToken[]
 
   @@index([email])
   @@map("users")
 }
 
 model MenuItem {
-  id          Int       @id @default(autoincrement())
-  name        String    @db.VarChar(255)
-  description String?   @db.Text
-  price       Decimal   @db.Decimal(10, 2)
-  category    String    @db.VarChar(50)
-  image_url   String?   @db.Text
-  available   Boolean   @default(true)
-  created_at  DateTime  @default(now())
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  category    String   @db.VarChar(50)
+  image_url   String?  @db.Text
+  available   Boolean  @default(true)
+  created_at  DateTime @default(now())
 
   @@index([category])
   @@index([available])
@@ -43,21 +44,21 @@ model MenuItem {
 }
 
 model Order {
-  id                  Int       @id @default(autoincrement())
-  customer_name       String    @db.VarChar(255)
-  customer_email      String    @db.VarChar(255)
-  customer_phone      String?   @db.VarChar(50)
-  items               Json      // Array of order items: [{id, name, price, quantity}]
-  total               Decimal   @db.Decimal(10, 2)
-  status              String    @default("pending") @db.VarChar(50) // 'pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'
+  id                   Int       @id @default(autoincrement())
+  customer_name        String    @db.VarChar(255)
+  customer_email       String    @db.VarChar(255)
+  customer_phone       String?   @db.VarChar(50)
+  items                Json // Array of order items: [{id, name, price, quantity}]
+  total                Decimal   @db.Decimal(10, 2)
+  status               String    @default("pending") @db.VarChar(50) // 'pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'
   special_instructions String?   @db.Text
-  user_id             Int?
-  square_payment_id   String?   @db.VarChar(255)
-  created_at          DateTime  @default(now())
-  updated_at          DateTime? @updatedAt
+  user_id              Int?
+  square_payment_id    String?   @db.VarChar(255)
+  created_at           DateTime  @default(now())
+  updated_at           DateTime? @updatedAt
 
   // Relations
-  user                User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
 
   @@index([user_id])
   @@index([status])
@@ -66,25 +67,75 @@ model Order {
 }
 
 model CafeSettings {
-  id            Int       @id @default(autoincrement())
-  cafe_name     String?   @default("Hooligans") @db.VarChar(255)
-  tagline       String?   @db.VarChar(500)
-  description   String?   @db.Text
-  address       String?   @db.VarChar(500)
-  phone         String?   @db.VarChar(50)
-  email         String?   @db.VarChar(255)
-  monday_hours  String?   @default("7am - 8pm") @db.VarChar(100)
-  tuesday_hours String?   @default("7am - 8pm") @db.VarChar(100)
-  wednesday_hours String? @default("7am - 8pm") @db.VarChar(100)
-  thursday_hours String?  @default("7am - 8pm") @db.VarChar(100)
-  friday_hours  String?   @default("7am - 8pm") @db.VarChar(100)
-  saturday_hours String?  @default("8am - 9pm") @db.VarChar(100)
-  sunday_hours  String?   @default("8am - 9pm") @db.VarChar(100)
-  facebook_url  String?   @db.VarChar(500)
-  instagram_url String?   @db.VarChar(500)
-  twitter_url   String?   @db.VarChar(500)
-  tiktok_url    String?   @db.VarChar(500)
-  updated_at    DateTime? @updatedAt
+  id                              Int       @id @default(autoincrement())
+  cafe_name                       String?   @default("Hooligans") @db.VarChar(255)
+  tagline                         String?   @db.VarChar(500)
+  description                     String?   @db.Text
+  address                         String?   @db.VarChar(500)
+  phone                           String?   @db.VarChar(50)
+  email                           String?   @db.VarChar(255)
+  monday_hours                    String?   @default("7am - 8pm") @db.VarChar(100)
+  tuesday_hours                   String?   @default("7am - 8pm") @db.VarChar(100)
+  wednesday_hours                 String?   @default("7am - 8pm") @db.VarChar(100)
+  thursday_hours                  String?   @default("7am - 8pm") @db.VarChar(100)
+  friday_hours                    String?   @default("7am - 8pm") @db.VarChar(100)
+  saturday_hours                  String?   @default("8am - 9pm") @db.VarChar(100)
+  sunday_hours                    String?   @default("8am - 9pm") @db.VarChar(100)
+  monday_food_ordering_hours      String?   @db.VarChar(100)
+  tuesday_food_ordering_hours     String?   @db.VarChar(100)
+  wednesday_food_ordering_hours   String?   @db.VarChar(100)
+  thursday_food_ordering_hours    String?   @db.VarChar(100)
+  friday_food_ordering_hours      String?   @db.VarChar(100)
+  saturday_food_ordering_hours    String?   @db.VarChar(100)
+  sunday_food_ordering_hours      String?   @db.VarChar(100)
+  monday_drinks_ordering_hours    String?   @db.VarChar(100)
+  tuesday_drinks_ordering_hours   String?   @db.VarChar(100)
+  wednesday_drinks_ordering_hours String?   @db.VarChar(100)
+  thursday_drinks_ordering_hours  String?   @db.VarChar(100)
+  friday_drinks_ordering_hours    String?   @db.VarChar(100)
+  saturday_drinks_ordering_hours  String?   @db.VarChar(100)
+  sunday_drinks_ordering_hours    String?   @db.VarChar(100)
+  facebook_url                    String?   @db.VarChar(500)
+  instagram_url                   String?   @db.VarChar(500)
+  twitter_url                     String?   @db.VarChar(500)
+  tiktok_url                      String?   @db.VarChar(500)
+  timezone                        String    @default("Australia/Sydney") @db.VarChar(100)
+  updated_at                      DateTime? @updatedAt
 
   @@map("cafe_settings")
+}
+
+model DisabledMenuItem {
+  id         Int      @id @default(autoincrement())
+  square_id  String   @unique @db.VarChar(255)
+  created_at DateTime @default(now())
+
+  @@index([square_id])
+  @@map("disabled_menu_items")
+}
+
+model DisabledCategory {
+  id            Int      @id @default(autoincrement())
+  category_name String   @unique @db.VarChar(255)
+  created_at    DateTime @default(now())
+
+  @@index([category_name])
+  @@map("disabled_categories")
+}
+
+model PasswordResetToken {
+  id         Int      @id @default(autoincrement())
+  token      String   @unique @db.VarChar(255)
+  user_id    Int
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("password_reset_tokens")
 }

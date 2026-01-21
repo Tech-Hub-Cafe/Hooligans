@@ -1,12 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Phone, Mail, Clock, Send, CheckCircle2 } from "lucide-react";
+import { MapPin, Phone, Mail, Clock, Send, CheckCircle2, Loader2 } from "lucide-react";
+
+interface CafeSettings {
+  cafe_name: string;
+  address: string;
+  phone: string;
+  email: string;
+  monday_hours: string;
+  tuesday_hours: string;
+  wednesday_hours: string;
+  thursday_hours: string;
+  friday_hours: string;
+  saturday_hours: string;
+  sunday_hours: string;
+}
+
+async function fetchSettings(): Promise<CafeSettings> {
+  const res = await fetch("/api/settings");
+  if (!res.ok) throw new Error("Failed to fetch settings");
+  return res.json();
+}
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -17,6 +38,17 @@ export default function ContactPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["cafe-settings"],
+    queryFn: fetchSettings,
+    staleTime: 60 * 1000, // Cache for 1 minute
+  });
+
+  // Update page title
+  useEffect(() => {
+    document.title = `Contact Us | ${settings?.cafe_name || "Hooligans"}`;
+  }, [settings]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,62 +81,97 @@ export default function ContactPage() {
             {/* Contact Info */}
             <div>
               <h2 className="text-3xl font-bold mb-8">
-                Visit <span className="text-teal">Hooligans</span>
+                Visit <span className="text-teal">{settings?.cafe_name || "Hooligans"}</span>
               </h2>
               
-              <div className="space-y-6">
-                <Card className="border-0 shadow-lg">
-                  <CardContent className="p-6 flex items-start gap-4">
-                    <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
-                      <MapPin className="w-6 h-6 text-teal" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Location</h3>
-                      <p className="text-gray-600">123 Coffee Street</p>
-                      <p className="text-gray-600">San Francisco, CA 94102</p>
-                    </div>
-                  </CardContent>
-                </Card>
+              {isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <Loader2 className="w-8 h-8 animate-spin text-teal" />
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {settings?.address && (
+                    <Card className="border-0 shadow-lg">
+                      <CardContent className="p-6 flex items-start gap-4">
+                        <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
+                          <MapPin className="w-6 h-6 text-teal" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">Location</h3>
+                          <p className="text-gray-600">{settings.address}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                <Card className="border-0 shadow-lg">
-                  <CardContent className="p-6 flex items-start gap-4">
-                    <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
-                      <Clock className="w-6 h-6 text-teal" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Hours</h3>
-                      <p className="text-gray-600">Monday - Friday: 7am - 8pm</p>
-                      <p className="text-gray-600">Saturday - Sunday: 8am - 9pm</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                  <Card className="border-0 shadow-lg">
+                    <CardContent className="p-6 flex items-start gap-4">
+                      <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
+                        <Clock className="w-6 h-6 text-teal" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-lg mb-1">Hours</h3>
+                        {settings ? (
+                          <div className="space-y-1">
+                            <p className="text-gray-600">Monday: {settings.monday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Tuesday: {settings.tuesday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Wednesday: {settings.wednesday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Thursday: {settings.thursday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Friday: {settings.friday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Saturday: {settings.saturday_hours || "Closed"}</p>
+                            <p className="text-gray-600">Sunday: {settings.sunday_hours || "Closed"}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-gray-600">Monday - Friday: 7am - 8pm</p>
+                            <p className="text-gray-600">Saturday - Sunday: 8am - 9pm</p>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
 
-                <Card className="border-0 shadow-lg">
-                  <CardContent className="p-6 flex items-start gap-4">
-                    <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
-                      <Phone className="w-6 h-6 text-teal" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Phone</h3>
-                      <p className="text-gray-600">(555) 123-4567</p>
-                      <p className="text-gray-500 text-sm">Call us for reservations or catering</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                  {settings?.phone && (
+                    <Card className="border-0 shadow-lg">
+                      <CardContent className="p-6 flex items-start gap-4">
+                        <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
+                          <Phone className="w-6 h-6 text-teal" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">Phone</h3>
+                          <a
+                            href={`tel:${settings.phone}`}
+                            className="text-gray-600 hover:text-teal transition-colors block"
+                          >
+                            {settings.phone}
+                          </a>
+                          <p className="text-gray-500 text-sm">Call us for reservations or catering</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                <Card className="border-0 shadow-lg">
-                  <CardContent className="p-6 flex items-start gap-4">
-                    <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
-                      <Mail className="w-6 h-6 text-teal" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-lg mb-1">Email</h3>
-                      <p className="text-gray-600">hello@hooliganscafe.com</p>
-                      <p className="text-gray-500 text-sm">We typically respond within 24 hours</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                  {settings?.email && (
+                    <Card className="border-0 shadow-lg">
+                      <CardContent className="p-6 flex items-start gap-4">
+                        <div className="w-12 h-12 bg-black rounded-xl flex items-center justify-center shrink-0">
+                          <Mail className="w-6 h-6 text-teal" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg mb-1">Email</h3>
+                          <a
+                            href={`mailto:${settings.email}`}
+                            className="text-gray-600 hover:text-teal transition-colors block"
+                          >
+                            {settings.email}
+                          </a>
+                          <p className="text-gray-500 text-sm">We typically respond within 24 hours</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              )}
 
               {/* Map Placeholder */}
               <div className="mt-8 h-64 bg-gray-200 rounded-2xl overflow-hidden relative">

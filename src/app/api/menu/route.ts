@@ -1,5 +1,28 @@
 import { NextResponse } from "next/server";
-import { listCatalogItems, squareMoneyToDollars, isSquareConfigured } from "@/lib/square";
+import { prisma } from "@/lib/db";
+import { listCatalogItems, searchCatalogObjects, squareMoneyToDollars, isSquareConfigured } from "@/lib/square";
+import {
+  buildCategoryMap,
+  extractCategoryIds,
+  resolveCategoryNames,
+  normalizeItem,
+  separateCatalogObjects,
+} from "@/lib/squareCatalogParser";
+
+// Helper to safely serialize objects for logging (converts BigInt to string)
+function safeSerialize(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'bigint') return obj.toString();
+  if (Array.isArray(obj)) return obj.map(safeSerialize);
+  if (typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = safeSerialize(value);
+    }
+    return result;
+  }
+  return obj;
+}
 
 export interface Modifier {
   id: string;
@@ -52,7 +75,52 @@ export async function GET(request: Request) {
     console.log("[Menu API] Fetching menu items and categories from Square Catalog API...");
 
     try {
-      // Helper function to fetch all pages for a given type
+      // Use SearchCatalogObjects to fetch ITEM, CATEGORY, and ITEM_VARIATION
+      // with include_related_objects: true to get all related objects in one call
+      console.log("[Menu API] Using SearchCatalogObjects with ITEM, CATEGORY, ITEM_VARIATION and include_related_objects: true");
+      
+      const allCatalogObjects: any[] = [];
+      let cursor: string | null = null;
+      let pageCount = 0;
+      
+      do {
+        pageCount++;
+        if (pageCount > 100) {
+          console.warn(`[Menu API] Reached max pages (100), stopping pagination`);
+          break;
+        }
+        
+        const response = await searchCatalogObjects(
+          ["ITEM", "CATEGORY", "ITEM_VARIATION"], 
+          cursor || undefined, 
+          true // include_related_objects: true
+        );
+        
+        if (response.objects && response.objects.length > 0) {
+          allCatalogObjects.push(...response.objects);
+          console.log(`[Menu API] Page ${pageCount}: ${response.objects.length} objects (total: ${allCatalogObjects.length})`);
+        } else {
+          console.log(`[Menu API] Page ${pageCount}: No objects returned`);
+        }
+        
+        cursor = response.cursor || null;
+        if (cursor) {
+          console.log(`[Menu API] Page ${pageCount}: Has cursor, fetching next page...`);
+        } else {
+          console.log(`[Menu API] Page ${pageCount}: No cursor, pagination complete`);
+        }
+      } while (cursor);
+      
+      console.log(`[Menu API] ✅ Finished fetching: ${allCatalogObjects.length} total objects across ${pageCount} page(s)`);
+      
+      // Separate objects by type using canonical parser
+      const { items: catalogItems, categories, itemVariations } = separateCatalogObjects(allCatalogObjects);
+      
+      const itemsResponse = { objects: catalogItems };
+      const itemVariationsResponse = { objects: itemVariations };
+      const categoriesResponse = { objects: categories };
+      
+      // Also fetch modifier lists, modifiers, and images separately (not included in the main fetch)
       const fetchAllPages = async (type: string) => {
         const allObjects: any[] = [];
         let cursor: string | null = null;
@@ -85,18 +153,18 @@ export async function GET(request: Request) {
         return { objects: allObjects };
       };
 
-      // Fetch all pages for each type
-      const [itemsResponse, categoriesResponse, modifierListsResponse, modifiersResponse, imagesResponse] = await Promise.all([
-        fetchAllPages("ITEM"),
-        fetchAllPages("CATEGORY").catch(() => ({ objects: [] })), // Categories are optional
-        fetchAllPages("MODIFIER_LIST").catch(() => ({ objects: [] })), // Modifier lists are optional
-        fetchAllPages("MODIFIER").catch(() => ({ objects: [] })), // Modifiers are optional
-        fetchAllPages("IMAGE").catch(() => ({ objects: [] })), // Images are optional
+      // Fetch modifier lists, modifiers, and images separately
+      const [modifierListsResponse, modifiersResponse, imagesResponse] = await Promise.all([
+        fetchAllPages("MODIFIER_LIST").catch(() => ({ objects: [] })),
+        fetchAllPages("MODIFIER").catch(() => ({ objects: [] })),
+        fetchAllPages("IMAGE").catch(() => ({ objects: [] })),
       ]);
 
       console.log("[Menu API] Square API Response (all pages fetched):", {
         hasItems: !!itemsResponse.objects,
         itemCount: itemsResponse.objects?.length || 0,
+        hasItemVariations: !!itemVariationsResponse.objects,
+        itemVariationCount: itemVariationsResponse.objects?.length || 0,
         hasCategories: !!categoriesResponse.objects,
         categoryCount: categoriesResponse.objects?.length || 0,
         hasModifierLists: !!modifierListsResponse.objects,
@@ -107,25 +175,17 @@ export async function GET(request: Request) {
         imageCount: imagesResponse.objects?.length || 0,
       });
 
-      // Build category map: categoryId -> categoryName (normalized)
+      // Build category map using canonical parser
+      const categoryMapObj = buildCategoryMap(categoriesResponse.objects);
+      
+      // Convert to Map for compatibility with existing code
       const categoryMap = new Map<string, string>();
-      if (categoriesResponse.objects && categoriesResponse.objects.length > 0) {
-        console.log("[Menu API] Processing categories from Square:", {
-          categoryCount: categoriesResponse.objects.length,
-        });
-        categoriesResponse.objects.forEach((cat: any) => {
-          if (cat.categoryData?.name) {
-            // Normalize category name: trim whitespace, but preserve original casing
-            const categoryName = cat.categoryData.name.trim();
-            categoryMap.set(cat.id, categoryName);
-            console.log(`[Menu API] Mapped category: ${cat.id} -> "${categoryName}"`);
-          } else {
-            console.warn(`[Menu API] Category ${cat.id} has no name in categoryData:`, JSON.stringify(cat, null, 2));
-          }
-        });
-        console.log(`[Menu API] Category map contains ${categoryMap.size} categories:`, Array.from(categoryMap.entries()).map(([id, name]) => `${id} -> "${name}"`));
-      } else {
-        console.log("[Menu API] No categories found in Square catalog");
+      Object.entries(categoryMapObj).forEach(([id, name]) => {
+        categoryMap.set(id, name);
+      });
+      
+      if (categoryMap.size === 0) {
+        console.warn("[Menu API] ⚠️ No categories found in Square catalog - all items will be uncategorized");
       }
 
       // Build modifier map: modifierId -> modifier
@@ -138,9 +198,14 @@ export async function GET(request: Request) {
           // Square API can return modifiers in different structures
           const modifierData = mod.modifierData || mod;
           if (modifierData?.name) {
-            const modifierPrice = modifierData?.priceMoney
-              ? squareMoneyToDollars(modifierData.priceMoney.amount)
-              : 0;
+            // Safely convert price from BigInt to number
+            let modifierPrice = 0;
+            if (modifierData?.priceMoney?.amount) {
+              const amount = modifierData.priceMoney.amount;
+              modifierPrice = typeof amount === 'bigint' 
+                ? Number(amount) / 100 
+                : squareMoneyToDollars(amount);
+            }
             const modifierId = mod.id || modifierData.id;
             modifierMap.set(modifierId, {
               id: modifierId,
@@ -150,7 +215,14 @@ export async function GET(request: Request) {
             });
             console.log(`[Menu API] Mapped modifier: ${modifierId} -> ${modifierData.name} ($${modifierPrice.toFixed(2)})`);
           } else {
-            console.warn(`[Menu API] Modifier ${mod.id} has no name in modifierData:`, JSON.stringify(mod, null, 2));
+            // Log modifier structure without BigInt values to avoid serialization errors
+            const safeModifier = {
+              id: mod.id,
+              type: mod.type,
+              hasModifierData: !!mod.modifierData,
+              modifierDataKeys: mod.modifierData ? Object.keys(mod.modifierData) : [],
+            };
+            console.warn(`[Menu API] Modifier ${mod.id} has no name in modifierData. Structure:`, safeModifier);
           }
         });
       } else {
@@ -209,9 +281,14 @@ export async function GET(request: Request) {
                   // Extract from embedded modifier object
                   const modifierData = m.modifierData || m;
                   if (modifierData.name) {
-                    const modifierPrice = modifierData.priceMoney
-                      ? squareMoneyToDollars(modifierData.priceMoney.amount)
-                      : 0;
+                    // Safely convert price from BigInt to number
+                    let modifierPrice = 0;
+                    if (modifierData.priceMoney?.amount) {
+                      const amount = modifierData.priceMoney.amount;
+                      modifierPrice = typeof amount === 'bigint' 
+                        ? Number(amount) / 100 
+                        : squareMoneyToDollars(amount);
+                    }
                     return {
                       id: m.id || modifierData.id || m.modifierId,
                       name: modifierData.name,
@@ -246,7 +323,7 @@ export async function GET(request: Request) {
       if (!itemsResponse.objects || itemsResponse.objects.length === 0) {
         return NextResponse.json({
           items: [],
-          categories: Array.from(categoryMap.values()),
+          categories: Object.values(categoryMapObj),
           source: "square",
           count: 0,
           warning: "Square catalog is empty or has no ITEM type objects",
@@ -255,42 +332,44 @@ export async function GET(request: Request) {
 
       console.log(`[Menu API] Processing ${itemsResponse.objects.length} items from Square...`);
       
+      // Process items using canonical normalization
       let items = itemsResponse.objects.map((item: any, index: number) => {
         const itemName = item.itemData?.name || item.id || "Unknown";
         const variation = item.itemData?.variations?.[0];
         const hasPrice = !!variation?.itemVariationData?.priceMoney;
         const hasVariations = !!item.itemData?.variations && item.itemData.variations.length > 0;
 
-        console.log(`[Menu API] Processing item ${index + 1}/${itemsResponse.objects.length}: "${itemName}"`, {
-          id: item.id,
-          hasVariations,
-          variationCount: item.itemData?.variations?.length || 0,
-          hasPrice,
-          isDeleted: item.isDeleted,
-        });
-
+        // Normalize item using canonical parser
+        const normalized = normalizeItem(item, categoryMapObj, itemVariationsResponse.objects);
+        
+        // Resolve category names from IDs
+        const categoryNames = resolveCategoryNames(normalized.categoryIds, categoryMapObj);
+        
+        // Use first category name for display (items can have multiple categories)
+        const categoryName = categoryNames.length > 0 
+          ? categoryNames[0] 
+          : "Uncategorized";
+        
+        // Debug logging (only if debug flag is set)
+        if (process.env.SQUARE_CATALOG_DEBUG === "true") {
+          if (index === 0) {
+            console.log(`[Menu API] 🔍 Normalized item structure for "${itemName}":`, {
+              id: normalized.id,
+              name: normalized.name,
+              categoryIds: normalized.categoryIds,
+              categoryNames: categoryNames,
+              finalCategory: categoryName,
+            });
+          }
+        }
+        
+        // Warn about items without variations or prices (always log these)
         if (!hasVariations) {
           console.warn(`[Menu API] ⚠️ Item "${itemName}" (${item.id}) has NO variations - it may not display correctly`);
         }
 
         if (!hasPrice) {
           console.warn(`[Menu API] ⚠️ Item "${itemName}" (${item.id}) has no price variation - will show as $0.00`);
-        }
-
-        // Get category name from map, or use categoryId if not found
-        const categoryId = item.itemData?.categoryId;
-        let categoryName: string;
-        
-        if (categoryId && categoryMap.has(categoryId)) {
-          categoryName = categoryMap.get(categoryId)!;
-          console.log(`[Menu API] Item "${itemName}" assigned to category "${categoryName}" (ID: ${categoryId})`);
-        } else if (categoryId) {
-          // Category ID exists but not in map - log warning
-          console.warn(`[Menu API] ⚠️ Item "${itemName}" has categoryId "${categoryId}" but category not found in map. Available categories:`, Array.from(categoryMap.keys()));
-          categoryName = "Uncategorized";
-        } else {
-          categoryName = "Uncategorized";
-          console.log(`[Menu API] Item "${itemName}" has no categoryId - assigned to "Uncategorized"`);
         }
 
         // Get modifier lists for this item
@@ -371,15 +450,23 @@ export async function GET(request: Request) {
           });
         }
 
+        // Safely convert price from BigInt to number
+        let price = 0;
+        if (hasPrice && variation?.itemVariationData?.priceMoney?.amount) {
+          const amount = variation.itemVariationData.priceMoney.amount;
+          // Handle both BigInt and number types
+          price = typeof amount === 'bigint' 
+            ? Number(amount) / 100 
+            : squareMoneyToDollars(amount);
+        }
+
         return {
           id: item.id,
           name: item.itemData?.name || "Unknown",
           description: item.itemData?.description || null,
-          price: hasPrice
-            ? squareMoneyToDollars(variation.itemVariationData.priceMoney.amount)
-            : 0,
+          price: price,
           category: categoryName.trim(), // Ensure category name is trimmed for exact matching
-          categoryId: categoryId || null,
+          categoryId: normalized.categoryIds.length > 0 ? normalized.categoryIds[0] : null,
           image_url: imageUrl,
           available: !item.isDeleted,
           square_id: item.id,
@@ -387,25 +474,60 @@ export async function GET(request: Request) {
         };
       });
 
-      // Extract unique categories from items (sorted alphabetically, but "Uncategorized" last)
+      // Fetch disabled items and categories from database
+      let disabledItems: any[] = [];
+      let disabledCategories: any[] = [];
+      
+      try {
+        [disabledItems, disabledCategories] = await Promise.all([
+          prisma.disabledMenuItem.findMany(),
+          prisma.disabledCategory.findMany().catch(() => []), // Gracefully handle if table doesn't exist yet
+        ]);
+      } catch (error) {
+        console.error("[Menu API] Error fetching disabled items/categories:", error);
+        // Continue with empty arrays if there's an error
+        disabledItems = [];
+        disabledCategories = [];
+      }
+      const disabledSquareIds = new Set(disabledItems.map(item => item.square_id));
+      // Normalize category names for comparison (trim whitespace)
+      const disabledCategoryNames = new Set(
+        disabledCategories.map(cat => cat.category_name.trim())
+      );
+      
+      console.log(`[Menu API] Disabled categories:`, Array.from(disabledCategoryNames));
+      
+      // Filter out disabled items
+      let filteredItems = items.filter(item => !disabledSquareIds.has(item.square_id));
+      console.log(`[Menu API] Filtered out ${disabledSquareIds.size} disabled items. Showing ${filteredItems.length} active items.`);
+      
+      // Filter out items from disabled categories
+      const itemsBeforeCategoryFilter = filteredItems.length;
+      filteredItems = filteredItems.filter(item => {
+        const itemCategory = item.category.trim();
+        const isDisabled = disabledCategoryNames.has(itemCategory);
+        if (isDisabled) {
+          console.log(`[Menu API] Filtering out item "${item.name}" from disabled category "${itemCategory}"`);
+        }
+        return !isDisabled;
+      });
+      console.log(`[Menu API] Filtered out ${itemsBeforeCategoryFilter - filteredItems.length} items from disabled categories. Showing ${filteredItems.length} active items.`);
+
+      // Extract unique categories from filtered items only (sorted alphabetically, but "Uncategorized" last)
       // Normalize category names to ensure exact matching
-      const uniqueCategories = Array.from(new Set(items.map(item => item.category.trim())))
+      // Only include categories that are not disabled AND have items
+      const uniqueCategories = Array.from(new Set(filteredItems.map(item => item.category.trim())))
         .filter(Boolean)
+        .filter(cat => !disabledCategoryNames.has(cat))
         .sort((a, b) => {
           if (a === "Uncategorized") return 1;
           if (b === "Uncategorized") return -1;
           return a.localeCompare(b);
         });
 
-      // Also include all categories from Square (even if no items are assigned to them)
-      const allCategoryNames = Array.from(categoryMap.values()).map(name => name.trim());
-      const combinedCategories = Array.from(new Set([...uniqueCategories, ...allCategoryNames]))
-        .filter(Boolean)
-        .sort((a, b) => {
-          if (a === "Uncategorized") return 1;
-          if (b === "Uncategorized") return -1;
-          return a.localeCompare(b);
-        });
+      // Only use categories that have items (don't include empty categories from Square)
+      // This ensures disabled categories are completely hidden
+      const combinedCategories = uniqueCategories;
 
       console.log("[Menu API] ✅ Final menu items processed:", {
         totalItems: items.length,
@@ -414,34 +536,69 @@ export async function GET(request: Request) {
         itemsWithModifiers: items.filter(i => i.modifierLists && i.modifierLists.length > 0).length,
         itemsAvailable: items.filter(i => i.available).length,
         itemsDeleted: items.filter(i => !i.available).length,
-        itemNames: items.map(i => i.name),
-      });
-
-      console.log("[Menu API] Categories found:", {
-        totalCategories: combinedCategories.length,
-        categories: combinedCategories,
-        categoriesFromItems: uniqueCategories,
-        categoriesFromSquare: allCategoryNames,
         itemsWithCategories: items.filter(i => i.category && i.category.trim() !== "Uncategorized").length,
         itemsUncategorized: items.filter(i => !i.category || i.category.trim() === "Uncategorized").length,
-        categoryBreakdown: combinedCategories.map(cat => ({
-          category: cat,
-          itemCount: items.filter(i => i.category.trim() === cat).length,
-        })),
+        categoryMappingSuccessRate: items.length > 0 ? `${((items.filter(i => i.category && i.category.trim() !== "Uncategorized").length / items.length) * 100).toFixed(1)}%` : "0%",
       });
+      
+      // Debug logging only
+      if (process.env.SQUARE_CATALOG_DEBUG === "true") {
+        const itemsWithCategories = items.filter(i => i.category && i.category.trim() !== "Uncategorized").length;
+        const itemsUncategorized = items.filter(i => !i.category || i.category.trim() === "Uncategorized").length;
+        
+        console.log("[Menu API] Category breakdown:", {
+          totalCategories: combinedCategories.length,
+          categories: combinedCategories,
+          categoryBreakdown: combinedCategories.map(cat => ({
+            category: cat,
+            itemCount: items.filter(i => i.category.trim() === cat).length,
+          })),
+        });
+        
+        if (itemsUncategorized > 0) {
+          console.warn(`[Menu API] ⚠️ ${itemsUncategorized} items are uncategorized. Sample:`, 
+            items.filter(i => !i.category || i.category.trim() === "Uncategorized")
+              .slice(0, 5)
+              .map(i => ({ name: i.name, id: i.id, square_id: i.square_id }))
+          );
+        }
+      }
 
       // Filter by category if specified (use trimmed comparison for exact matching)
       if (category && category !== "all") {
         const normalizedCategory = category.trim();
-        items = items.filter((item) => item.category.trim() === normalizedCategory);
-        console.log(`[Menu API] Filtered items by category "${normalizedCategory}": ${items.length} items`);
+        filteredItems = filteredItems.filter((item) => item.category.trim() === normalizedCategory);
+        console.log(`[Menu API] Filtered items by category "${normalizedCategory}": ${filteredItems.length} items`);
       }
 
+      // Final safety check: ensure all BigInt values are converted to numbers
+      // This prevents serialization errors when NextResponse.json() tries to stringify
+      const serializedItems = filteredItems.map(item => {
+        const serialized: any = {
+          ...item,
+          // Ensure price is always a number
+          price: typeof item.price === 'bigint' ? Number(item.price) / 100 : Number(item.price),
+        };
+        
+        // Ensure modifierLists prices are numbers
+        if (item.modifierLists) {
+          serialized.modifierLists = item.modifierLists.map(ml => ({
+            ...ml,
+            modifiers: ml.modifiers.map(mod => ({
+              ...mod,
+              price: typeof mod.price === 'bigint' ? Number(mod.price) / 100 : Number(mod.price),
+            })),
+          }));
+        }
+        
+        return serialized;
+      });
+
       return NextResponse.json({
-        items,
+        items: serializedItems,
         categories: combinedCategories, // Use combined categories (from items + Square catalog)
         source: "square",
-        count: items.length,
+        count: serializedItems.length,
       });
     } catch (squareError: any) {
       const statusCode = squareError?.statusCode || squareError?.status;

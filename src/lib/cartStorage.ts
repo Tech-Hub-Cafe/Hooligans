@@ -1,6 +1,8 @@
 // Cart storage utilities
 // Uses sessionStorage for guests, localStorage for logged-in users
 
+import { CartItem } from "@/types";
+
 const CART_KEY = "cafeCart";
 
 export function getCartStorage(isAuthenticated: boolean): Storage {
@@ -87,12 +89,5 @@ export function migrateCartOnLogin(): void {
 export function getCartCount(isAuthenticated: boolean): number {
   const cart = getCart(isAuthenticated);
   return cart.reduce((sum, item) => sum + item.quantity, 0);
-}
-
-interface CartItem {
-  id: number;
-  name: string;
-  price: number;
-  quantity: number;
 }
 
