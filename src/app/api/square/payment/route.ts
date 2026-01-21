@@ -232,12 +232,30 @@ export async function POST(request: Request) {
         let errorMessage = "Payment processing failed";
         let statusCode = 500;
         let errorDetails: any = null;
+        let troubleshooting: string | undefined;
 
         if (squareError && typeof squareError === 'object') {
           const err = squareError as any;
           errorMessage = err.message || err.detail || errorMessage;
           statusCode = err.statusCode || err.status || statusCode;
           errorDetails = err.errors || null;
+          troubleshooting = err.troubleshooting;
+          
+          // Add helpful message for 401 errors
+          if (statusCode === 401 || statusCode === 403) {
+            errorMessage = `Square API Authentication Error (${statusCode}): ${errorMessage}. This usually means:
+1. Environment mismatch - Check SQUARE_ENVIRONMENT matches your token type
+2. Invalid or expired access token - Generate a new token from Square Dashboard
+3. Missing required OAuth scopes - Ensure PAYMENTS_WRITE and ORDERS_WRITE are enabled
+
+Check your .env file and ensure:
+- SQUARE_ENVIRONMENT=production (if using production token)
+- NEXT_PUBLIC_SQUARE_ENVIRONMENT=production (must match)
+- SQUARE_ACCESS_TOKEN is valid and not expired
+- Token has PAYMENTS_WRITE and ORDERS_WRITE scopes
+
+Visit /api/square/debug-401 for detailed diagnostics.`;
+          }
         } else if (squareError instanceof Error) {
           errorMessage = squareError.message;
         }
@@ -246,6 +264,7 @@ export async function POST(request: Request) {
           message: errorMessage,
           statusCode,
           errors: errorDetails,
+          troubleshooting,
         });
 
         return NextResponse.json(
@@ -253,6 +272,7 @@ export async function POST(request: Request) {
             error: errorMessage,
             details: errorDetails,
             statusCode,
+            troubleshooting,
           },
           { status: statusCode }
         );

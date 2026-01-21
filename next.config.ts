@@ -12,7 +12,7 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  reactCompiler: true,
+  reactCompiler: false,
   // Empty turbopack config to allow the webpack config from next-pwa
   turbopack: {},
   images: {
@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "items-images-production.s3.us-west-2.amazonaws.com",
       },
     ],
   },

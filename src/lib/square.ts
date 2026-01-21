@@ -6,33 +6,47 @@ import { randomUUID } from "crypto";
 
 // Detect environment from token or use NODE_ENV
 // Sandbox tokens typically start with "EAAAl" or "sandbox-"
-// Production tokens typically start with "EAAA" or "sq0at-"
+// Production tokens typically start with "EAAA" (but not "EAAAl"), "sq0at-", or "EAAAY"
 function detectSquareEnvironment(): SquareEnvironment {
   const token = process.env.SQUARE_ACCESS_TOKEN || "";
   const nodeEnv = process.env.NODE_ENV;
 
-  // Explicit environment override
+  // Explicit environment override (highest priority)
   if (process.env.SQUARE_ENVIRONMENT) {
-    return process.env.SQUARE_ENVIRONMENT === "production"
-      ? SquareEnvironment.Production
-      : SquareEnvironment.Sandbox;
+    const env = process.env.SQUARE_ENVIRONMENT.toLowerCase().trim();
+    const isProduction = env === "production" || env === "prod";
+    console.log(`[Square] Using explicit environment: ${isProduction ? "production" : "sandbox"} (from SQUARE_ENVIRONMENT)`);
+    return isProduction ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
   }
 
   // Auto-detect from token format
-  // Sandbox tokens: EAAAl... (lowercase 'l' after EAAA)
+  if (!token) {
+    console.warn("[Square] No token found, defaulting to sandbox");
+    return SquareEnvironment.Sandbox;
+  }
+
+  // Sandbox tokens: EAAAl... (lowercase 'l' after EAAA) or sandbox- prefix
   if (token.startsWith("sandbox-") || token.startsWith("EAAAl")) {
     console.log("[Square] Detected Sandbox token (starts with EAAAl or sandbox-)");
     return SquareEnvironment.Sandbox;
   }
 
   // Production tokens: sq0at-... or EAAA... (but not EAAAl...)
-  if (token.startsWith("sq0at-") || (token.startsWith("EAAA") && !token.startsWith("EAAAl"))) {
+  // Also check for EAAAY (another production token format)
+  if (
+    token.startsWith("sq0at-") || 
+    token.startsWith("EAAAY") ||
+    (token.startsWith("EAAA") && !token.startsWith("EAAAl"))
+  ) {
     console.log("[Square] Detected Production token");
     return SquareEnvironment.Production;
   }
 
   // Fallback to NODE_ENV
-  return nodeEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
+  const fallbackEnv = nodeEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox;
+  console.warn(`[Square] Could not detect environment from token format. Token starts with: ${token.substring(0, 10)}... Using NODE_ENV fallback: ${fallbackEnv === SquareEnvironment.Production ? "production" : "sandbox"}`);
+  console.warn(`[Square] ⚠️  To avoid this warning, set SQUARE_ENVIRONMENT=production or SQUARE_ENVIRONMENT=sandbox in your .env file`);
+  return fallbackEnv;
 }
 
 const squareEnvironment = detectSquareEnvironment();
@@ -52,11 +66,19 @@ export const ordersApi = squareClient.orders;
 // Log configuration for debugging
 if (process.env.SQUARE_ACCESS_TOKEN) {
   const tokenPreview = process.env.SQUARE_ACCESS_TOKEN.substring(0, 10) + "...";
+  const envName = squareEnvironment === SquareEnvironment.Production ? "production" : "sandbox";
   console.log("[Square API] Initialized:", {
-    environment: squareEnvironment === SquareEnvironment.Production ? "production" : "sandbox",
+    environment: envName,
     tokenPreview,
     hasLocationId: !!process.env.SQUARE_LOCATION_ID,
+    locationId: process.env.SQUARE_LOCATION_ID ? `${process.env.SQUARE_LOCATION_ID.substring(0, 8)}...` : "not set",
+    explicitEnv: process.env.SQUARE_ENVIRONMENT || "auto-detected",
   });
+  
+  // Warn if environment might be mismatched
+  if (!process.env.SQUARE_ENVIRONMENT) {
+    console.warn("[Square API] ⚠️  SQUARE_ENVIRONMENT not set. Using auto-detection. For production, set SQUARE_ENVIRONMENT=production");
+  }
 }
 
 // Helper to convert Square money to dollars
@@ -76,17 +98,47 @@ export function extractSquareError(error: unknown): {
   statusCode?: number;
   errors?: Array<{ category?: string; code?: string; detail?: string }>;
   isAuthError: boolean;
+  troubleshooting?: string;
 } {
   if (error && typeof error === 'object') {
     const squareError = error as any;
+    const statusCode = squareError.statusCode || squareError.status;
+    const isAuthError = statusCode === 401 || statusCode === 403;
+    
+    // Generate troubleshooting tips for 401 errors
+    let troubleshooting: string | undefined;
+    if (isAuthError) {
+      const currentEnv = squareEnvironment === SquareEnvironment.Production ? "production" : "sandbox";
+      const tokenPreview = process.env.SQUARE_ACCESS_TOKEN?.substring(0, 10) || "not set";
+      const explicitEnv = process.env.SQUARE_ENVIRONMENT || "auto-detected";
+      
+      troubleshooting = `401 UNAUTHORIZED Error Troubleshooting:
+1. Environment Mismatch: Current environment is "${currentEnv}" (${explicitEnv})
+   - If using production token, set SQUARE_ENVIRONMENT=production in .env
+   - If using sandbox token, set SQUARE_ENVIRONMENT=sandbox or remove the variable
+   - Also set NEXT_PUBLIC_SQUARE_ENVIRONMENT to match (for client-side SDK)
+
+2. Token Format: Token starts with "${tokenPreview}..."
+   - Production tokens: sq0at-... or EAAA... (not EAAAl...)
+   - Sandbox tokens: EAAAl... or sandbox-...
+   - Verify token matches the environment you're using
+
+3. Token Validity: Ensure token is:
+   - A Personal Access Token (not OAuth token)
+   - Not expired or revoked
+   - Has required scopes: ITEMS_READ, PAYMENTS_WRITE, ORDERS_WRITE
+
+4. Location ID: Verify SQUARE_LOCATION_ID belongs to the same merchant account
+
+Check /api/square/debug-401 for detailed diagnostics.`;
+    }
+    
     return {
       message: squareError.message || 'Square API error',
-      statusCode: squareError.statusCode || squareError.status,
+      statusCode,
       errors: squareError.errors || [],
-      isAuthError: squareError.statusCode === 401 ||
-        squareError.statusCode === 403 ||
-        squareError.status === 401 ||
-        squareError.status === 403,
+      isAuthError,
+      troubleshooting,
     };
   }
 

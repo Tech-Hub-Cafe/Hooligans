@@ -603,21 +603,42 @@ export async function GET(request: Request) {
     } catch (squareError: any) {
       const statusCode = squareError?.statusCode || squareError?.status;
       const errors = squareError?.errors || [];
+      const isAuthError = statusCode === 401 || statusCode === 403;
 
       console.error("[Menu API] Square API Error:", {
         message: squareError?.message,
         errors: errors,
         statusCode: statusCode,
         tokenPreview: process.env.SQUARE_ACCESS_TOKEN?.substring(0, 10) + "...",
+        isAuthError,
+        troubleshooting: squareError?.troubleshooting,
       });
+
+      // Add helpful error message for 401 errors
+      let errorMessage = squareError?.message || "Failed to fetch menu items from Square";
+      if (isAuthError) {
+        errorMessage = `Square API Authentication Error (401): ${errorMessage}. This usually means:
+1. Environment mismatch (production token with sandbox endpoints or vice versa)
+2. Invalid or expired access token
+3. Missing required OAuth scopes
+
+Check your .env file and ensure:
+- SQUARE_ENVIRONMENT=production (if using production token)
+- NEXT_PUBLIC_SQUARE_ENVIRONMENT=production (must match)
+- SQUARE_ACCESS_TOKEN is valid and not expired
+- Token has ITEMS_READ or CATALOG_READ scope
+
+Visit /api/square/debug-401 for detailed diagnostics.`;
+      }
 
       return NextResponse.json(
         {
           error: true,
           source: "square",
-          message: squareError?.message || "Failed to fetch menu items from Square",
+          message: errorMessage,
           errors: errors,
           statusCode: statusCode,
+          troubleshooting: isAuthError ? squareError?.troubleshooting : undefined,
           items: [],
           count: 0,
         },

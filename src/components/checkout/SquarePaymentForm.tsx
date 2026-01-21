@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { CreditCard, Loader2, Lock, Smartphone } from "lucide-react";
@@ -79,8 +79,10 @@ export default function SquarePaymentForm({
   const isMountedRef = useRef(true); // Track if component is mounted
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null); // Track retry timeout
 
-  // Create a unique ID for this instance to prevent collisions
-  const containerId = useRef(`card-container-${Math.random().toString(36).substring(2, 9)}`).current;
+  // Create a unique ID for this instance
+  const uniqueId = React.useId();
+  // Sanitize the ID for use in DOM selectors
+  const containerId = `card-container-${uniqueId.replace(/:/g, '')}`;
 
   const [isSquareLoaded, setIsSquareLoaded] = useState(false);
   const [cardReady, setCardReady] = useState(false);
@@ -110,16 +112,57 @@ export default function SquarePaymentForm({
 
   const appId = process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID;
   const locationId = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID;
+  const squareEnvironment = process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT;
 
-  // Check if Square is configured
+  // Determine Square environment
+  // Logic: 
+  // 1. If NEXT_PUBLIC_SQUARE_ENVIRONMENT is explicitly set, use it.
+  // 2. Else, infer from Application ID (starts with 'sandbox-' => sandbox, 'sq0idp-' => production).
+  const isProduction = (() => {
+    const env = process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT;
+    if (env === 'production' || env === 'prod') return true;
+    if (env === 'sandbox') return false;
+
+    // Fallback: Infer from App ID
+    if (appId?.startsWith('sandbox-')) return false;
+    // Default to production if no "sandbox" prefix found (standard Square convention)
+    return true;
+  })();
+
   const isSquareConfigured = !!(appId && locationId);
 
-  // Determine Square environment for SDK URL
+  // Log configuration status for debugging
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      const explicitEnv = process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT;
+
+      console.log("[SquarePayment] Configuration check:", {
+        hasAppId: !!appId,
+        hasLocationId: !!locationId,
+        explicitEnv: explicitEnv || "not set",
+        inferredMode: isProduction ? "PRODUCTION" : "SANDBOX",
+        isConfigured: isSquareConfigured,
+        appIdPreview: appId ? `${appId.substring(0, 10)}...` : "missing",
+      });
+
+      // Warn if mismatch might occur
+      if (explicitEnv === 'sandbox' && isProduction) {
+        console.warn("[SquarePayment] ⚠️ MISMTACH: Env set to SANDBOX but App ID looks like PRODUCTION. This may fail.");
+      }
+      if ((explicitEnv === 'production' || explicitEnv === 'prod') && !isProduction) {
+        console.warn("[SquarePayment] ⚠️ MISMTACH: Env set to PRODUCTION but App ID looks like SANDBOX. This may fail.");
+      }
+    }
+  }, [appId, locationId, isProduction, isSquareConfigured]);
+
+  // Determine Square SDK URL based on the robust logic above
   const getSquareSDKUrl = () => {
-    const env = process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT;
-    if (env === 'production') {
+    if (isProduction) {
+      console.log("[SquarePayment] Using Production SDK");
       return "https://web.squarecdn.com/v1/square.js";
     }
+
+    console.log("[SquarePayment] Using Sandbox SDK");
     return "https://sandbox.web.squarecdn.com/v1/square.js";
   };
 
@@ -262,20 +305,42 @@ export default function SquarePaymentForm({
     isInitializingRef.current = true;
 
     async function initializePayments() {
+      // Define options at top level to ensure availability in all try/catch blocks
+      const cardOptions: { postalCode?: boolean | string } = {};
+
       try {
         log.info("Initializing payment methods...");
 
         // Wait for card container to be available
         // Update waitForCardContainer to use the unique ID
-        const waitForContainer = async (maxRetries = 10, delay = 200): Promise<HTMLElement | null> => {
+        const waitForContainer = async (maxRetries = 15, delay = 300): Promise<HTMLElement | null> => {
           for (let attempt = 0; attempt < maxRetries; attempt++) {
             if (isCancelled) return null;
             const container = document.getElementById(containerId);
-            if (container) return container;
+            if (container) {
+              // Verify container is actually visible and has dimensions
+              const rect = container.getBoundingClientRect();
+              const isVisible = rect.width > 0 && rect.height > 0;
+              log.debug(`Container found (attempt ${attempt + 1}/${maxRetries})`, {
+                containerId,
+                visible: isVisible,
+                dimensions: { width: rect.width, height: rect.height },
+              });
+              return container;
+            }
             if (attempt < maxRetries - 1) {
               await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
+          log.error("Container not found after retries", {
+            containerId,
+            maxRetries,
+            delay,
+            allElements: Array.from(document.querySelectorAll('[id*="card-container"]')).map(el => ({
+              id: el.id,
+              visible: el.getBoundingClientRect().width > 0,
+            })),
+          });
           return null;
         };
 
@@ -299,62 +364,340 @@ export default function SquarePaymentForm({
           return;
         }
 
-        const payments = await window.Square!.payments(appId!, locationId!);
+        // Check if container is visible/has size
+        const { width, height } = cardContainer.getBoundingClientRect();
+        if (width === 0 || height === 0) {
+          log.warn(`Card container has zero dimensions (${width}x${height}). This may cause initialization failure.`);
+          // We'll proceed anyway as sometimes sizes update late, but this is a red flag.
+        }
+
+        // Validate appId and locationId before calling Square API
+        if (!appId || !locationId) {
+          throw new Error(`Missing Square configuration: appId=${!!appId}, locationId=${!!locationId}`);
+        }
+
+        // Validate Square SDK is loaded
+        if (!window.Square) {
+          throw new Error("Square SDK not loaded. Please refresh the page.");
+        }
+
+        // Validate credentials format
+        if (!appId || appId.length < 10) {
+          throw new Error(`Invalid Application ID format. Expected at least 10 characters, got ${appId?.length || 0}.`);
+        }
+        if (!locationId || locationId.length < 10) {
+          throw new Error(`Invalid Location ID format. Expected at least 10 characters, got ${locationId?.length || 0}.`);
+        }
+
+        log.debug("Creating payments instance", {
+          appId: appId.substring(0, 10) + "...",
+          locationId: locationId.substring(0, 10) + "...",
+          appIdLength: appId.length,
+          locationIdLength: locationId.length,
+          hasSquareSDK: !!window.Square,
+          environment: process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT || "not set",
+          sdkUrl: getSquareSDKUrl(),
+        });
+
+        // Verify we're in a secure context (HTTPS or localhost)
+        if (typeof window !== 'undefined') {
+          const isLocalhost = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.hostname.startsWith('192.168.');
+          const isSecure = window.location.protocol === 'https:';
+
+          if (!isSecure && !isLocalhost) {
+            throw new Error("Square payment forms require HTTPS in production. Please access this page over HTTPS.");
+          }
+        }
+
+        let payments;
+        try {
+          // Verify Square.payments is a function
+          if (typeof window.Square!.payments !== 'function') {
+            throw new Error("Square.payments is not a function. The Square SDK may not be loaded correctly.");
+          }
+
+          payments = await window.Square!.payments(appId, locationId);
+
+          // Verify payments object has card method
+          if (!payments || typeof payments.card !== 'function') {
+            throw new Error("Payments instance is invalid. The card method is not available.");
+          }
+
+          log.debug("Payments instance created successfully", {
+            hasCardMethod: typeof payments.card === 'function',
+            hasApplePayMethod: typeof payments.applePay === 'function',
+            hasGooglePayMethod: typeof payments.googlePay === 'function',
+          });
+        } catch (paymentsError: any) {
+          log.error("Square payments() call failed", {
+            error: paymentsError,
+            message: paymentsError?.message,
+            name: paymentsError?.name,
+            code: paymentsError?.code,
+            type: paymentsError?.type,
+            stack: paymentsError?.stack,
+            appId: appId?.substring(0, 10) + "...",
+            locationId: locationId?.substring(0, 10) + "...",
+            environment: squareEnvironment,
+            sdkUrl: getSquareSDKUrl(),
+          });
+
+          // Provide more specific error messages
+          let errorMsg = paymentsError?.message || paymentsError?.toString() || "Unknown error";
+
+          if (errorMsg.includes("UNAUTHORIZED") || errorMsg.includes("401")) {
+            errorMsg = `Authentication failed (401). Your Square Application ID or Location ID may be incorrect. ` +
+              `Verify they match your ${squareEnvironment === 'production' ? 'production' : 'sandbox'} environment.`;
+          } else if (errorMsg.includes("Invalid") || errorMsg.includes("invalid")) {
+            errorMsg = `Invalid credentials: ${errorMsg}. Please check your NEXT_PUBLIC_SQUARE_APPLICATION_ID and NEXT_PUBLIC_SQUARE_LOCATION_ID.`;
+          }
+
+          throw new Error(
+            `Square payments initialization failed: ${errorMsg}. ` +
+            `Check that NEXT_PUBLIC_SQUARE_APPLICATION_ID and NEXT_PUBLIC_SQUARE_LOCATION_ID are set correctly ` +
+            `and match your SQUARE_ENVIRONMENT (${squareEnvironment || 'not set'}).`
+          );
+        }
+
         if (isCancelled) return;
 
-        log.debug("Payments instance created");
+        log.debug("Payments instance created successfully");
+
+        // Postal code configuration
+        // Square automatically handles postal code requirements based on the location country
+        // set in Square Dashboard. For Australia, Square will automatically hide the postal code
+        // field if the location is configured as Australia. We don't need to set postalCode option.
+        if (locationCountry) {
+          log.debug(`${isProduction ? 'Production' : 'Sandbox'} (${locationCountry}): Square will automatically handle postal code based on location country`);
+        } else {
+          log.debug(`${isProduction ? 'Production' : 'Sandbox'}: Location country not yet fetched, Square will use default behavior based on account settings`);
+        }
 
         // Initialize Card Payment
         try {
           // Clear any existing content in card container
-          cardContainer.innerHTML = ''; // Clear any duplicate forms
+          cardContainer.innerHTML = '';
 
           let card;
+          const isSandbox = !isProduction;
 
-          // Determine if we are in Sandbox
-          const isSandbox = appId?.startsWith('sandbox');
-
-          if (isSandbox) {
-            // SANDBOX: Use default settings (often requires postal code)
-            log.debug("Sandbox detected - enabling default fields (including postal code) for testing.");
-            card = await payments.card();
-          } else {
-            // PRODUCTION: For Australia, force disable postal code
-            if (locationCountry === 'AU') {
-              try {
-                card = await payments.card({
-                  postalCode: false // Force disable for AU Production
-                });
-                if (isCancelled) return;
-                log.debug("Production (AU): Card created with postalCode: false");
-              } catch (e) {
-                log.warn("Failed to force disable postal code in production:", e);
-                card = await payments.card();
-              }
-            } else {
-              // Production non-AU: Default behavior
-              card = await payments.card();
+          // Create card instance
+          try {
+            // Verify payments.card is available
+            if (!payments || typeof payments.card !== 'function') {
+              throw new Error("payments.card() method is not available. This usually means the Square SDK failed to initialize correctly.");
             }
+
+            log.debug("Creating card instance", {
+              options: cardOptions,
+              isProduction,
+              locationCountry,
+              hasCardMethod: typeof payments.card === 'function',
+            });
+
+            // Create card with a timeout to catch hanging requests
+            log.info(`Attempting to create card with options: ${JSON.stringify(cardOptions)}`);
+
+            const cardPromise = Object.keys(cardOptions).length > 0
+              ? payments.card(cardOptions)
+              : payments.card();
+
+            // Add timeout to prevent hanging
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("Card creation timed out after 10 seconds. This may indicate invalid credentials or network issues.")), 10000);
+            });
+
+            card = await Promise.race([cardPromise, timeoutPromise]) as any;
+
+            // Verify card instance is valid
+            if (!card || typeof card.attach !== 'function') {
+              throw new Error("Card instance is invalid. The attach method is not available.");
+            }
+
+            log.debug("Card instance created successfully", {
+              hasAttachMethod: typeof card.attach === 'function',
+              hasTokenizeMethod: typeof card.tokenize === 'function',
+              hasDestroyMethod: typeof card.destroy === 'function',
+            });
+          } catch (cardCreateError: any) {
+            // Extract the actual error message - Square sometimes wraps errors
+            const actualError = cardCreateError?.error || cardCreateError?.cause || cardCreateError;
+            const errorMessage = actualError?.message || cardCreateError?.message || cardCreateError?.toString() || "Unknown error";
+            const errorName = actualError?.name || cardCreateError?.name;
+            const errorCode = actualError?.code || cardCreateError?.code;
+
+            log.error("Failed to create card instance", {
+              error: cardCreateError,
+              actualError,
+              message: errorMessage,
+              name: errorName,
+              code: errorCode,
+              type: cardCreateError?.type,
+              stack: cardCreateError?.stack,
+              options: cardOptions,
+              isProduction,
+              locationCountry,
+              appId: appId?.substring(0, 10) + "...",
+              locationId: locationId?.substring(0, 10) + "...",
+              squareSDKLoaded: !!window.Square,
+              sdkUrl: getSquareSDKUrl(),
+              environment: squareEnvironment,
+            });
+
+            // Provide more specific error messages based on error content
+            let userFriendlyMessage = errorMessage;
+
+            if (errorMessage.includes("UNAUTHORIZED") || errorMessage.includes("401") || errorCode === 401) {
+              userFriendlyMessage = `Authentication failed (401). Your Square Application ID or Location ID may be incorrect for ${isProduction ? "production" : "sandbox"} environment.`;
+            } else if (errorMessage.includes("timeout") || errorMessage.includes("timed out")) {
+              userFriendlyMessage = `Card creation timed out. This usually means:
+- Invalid Application ID or Location ID
+- Network connectivity issues
+- Square API is not responding
+
+Please verify your credentials are correct.`;
+            } else if (errorMessage.includes("Card") || errorName === "CardError") {
+              // This is the generic Square error we're seeing
+              userFriendlyMessage = `Card initialization failed: "${errorMessage}"
+
+Common causes:
+1. Invalid Application ID or Location ID - Verify in Square Dashboard
+2. Environment mismatch - Production credentials with sandbox SDK (or vice versa)
+3. Square account not fully activated for payments
+4. Location ID doesn't belong to the Application ID
+
+Please verify:
+- NEXT_PUBLIC_SQUARE_APPLICATION_ID matches your ${isProduction ? "production" : "sandbox"} app in Square Dashboard
+- NEXT_PUBLIC_SQUARE_LOCATION_ID is correct and active for your Square account
+- NEXT_PUBLIC_SQUARE_ENVIRONMENT=${isProduction ? "production" : "sandbox"} matches your credentials
+- SDK URL is ${isProduction ? "https://web.squarecdn.com/v1/square.js" : "https://sandbox.web.squarecdn.com/v1/square.js"}
+
+Check browser console for detailed error logs.`;
+            } else if (errorMessage.includes("not available") || errorMessage.includes("undefined")) {
+              userFriendlyMessage = `Square SDK method not available: ${errorMessage}. The Square SDK may not be loaded correctly. Please refresh the page.`;
+            }
+
+            // Append debug info to the error message (only in development)
+            if (process.env.NODE_ENV === 'development') {
+              userFriendlyMessage += `\n\nDebug Info:
+Mode: ${isProduction ? 'PRODUCTION' : 'SANDBOX'}
+App ID: ${appId?.substring(0, 8)}...
+Loc ID: ${locationId?.substring(0, 8)}...`;
+            }
+
+            throw new Error(userFriendlyMessage);
           }
 
           if (isCancelled) {
-            if (card) await card.destroy();
+            if (card) {
+              try {
+                await card.destroy();
+              } catch (destroyError) {
+                log.warn("Error destroying card during cancellation:", destroyError);
+              }
+            }
             return;
           }
 
-          // Double-check container still exists before attaching (component might have unmounted)
+          // Double-check container still exists before attaching
           const finalContainer = document.getElementById(containerId);
           if (!finalContainer) {
             log.error("Card container disappeared before attach");
+            if (card) {
+              try {
+                await card.destroy();
+              } catch (destroyError) {
+                log.warn("Error destroying card:", destroyError);
+              }
+            }
             setError("Payment form container is not available. Please refresh the page.");
             isInitializingRef.current = false;
             return;
           }
 
-          await card.attach(`#${containerId}`);
+          // Attach card to container
+          // Square SDK best practice: Verify container exists and is ready before attaching
+          const attachContainer = document.getElementById(containerId);
+          if (!attachContainer) {
+            throw new Error(`Container element #${containerId} not found in DOM`);
+          }
+
+          // Check if container has dimensions (Square SDK requires visible container)
+          const rect = attachContainer.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) {
+            log.warn("Container has zero dimensions, but proceeding with attach", {
+              width: rect.width,
+              height: rect.height,
+              containerId,
+            });
+          }
+
+          log.debug("Attaching card to container", {
+            containerId,
+            containerExists: !!attachContainer,
+            containerDimensions: { width: rect.width, height: rect.height },
+          });
+
+          try {
+            // Square SDK: attach() must be called with a valid selector
+            await card.attach(`#${containerId}`);
+            log.debug("Card attached successfully");
+          } catch (attachError: any) {
+            const scriptTag = document.getElementById('square-js-script') as HTMLScriptElement;
+            const loadedSdkUrl = scriptTag?.src;
+
+            log.error("Failed to attach card to container", {
+              error: attachError,
+              message: attachError?.message,
+              name: attachError?.name,
+              code: attachError?.code,
+              type: attachError?.type,
+              category: attachError?.category,
+              details: attachError?.details,
+              stack: attachError?.stack,
+              containerId,
+              containerExists: !!document.getElementById(containerId),
+              squareSDKLoaded: !!window.Square,
+              loadedSdkUrl,
+              expectedEnvironment: isProduction ? "Production" : "Sandbox",
+              appIdPrefix: appId?.substring(0, 8),
+            });
+
+            // Square SDK best practice: Clean up card instance on failure
+            if (card) {
+              try {
+                await card.destroy();
+              } catch (destroyError) {
+                log.warn("Error destroying card after attach failure:", destroyError);
+              }
+            }
+
+            // Provide more specific error messages
+            let errorMessage = attachError?.message || attachError?.toString() || "Unknown error";
+
+            // Check for common Square error patterns
+            if (errorMessage.includes("UNAUTHORIZED") || errorMessage.includes("401")) {
+              errorMessage = `Authentication failed. Please verify your Square Application ID and Location ID are correct for ${isProduction ? "production" : "sandbox"} environment.`;
+            } else if (errorMessage.includes("container") || errorMessage.includes("element")) {
+              errorMessage = `Payment form container not found. Please refresh the page.`;
+            } else if (errorMessage.includes("Card")) {
+              const detailedError = attachError?.details ? JSON.stringify(attachError.details) : "";
+              errorMessage = `Card initialization failed: ${attachError?.message || "Please verify your Square credentials."} ${detailedError}`;
+            }
+
+            throw new Error(errorMessage);
+          }
 
           if (isCancelled) {
-            await card.destroy();
+            if (card) {
+              try {
+                await card.destroy();
+              } catch (destroyError) {
+                log.warn("Error destroying card:", destroyError);
+              }
+            }
             return;
           }
 
@@ -362,12 +705,18 @@ export default function SquarePaymentForm({
           setCardReady(true);
           initializedRef.current = true;
           isInitializingRef.current = false;
-          log.info("Card form ready");
+          log.info("Card form initialized and ready");
         } catch (cardError: any) {
-          log.error("Failed to initialize card", cardError);
-          // Don't show error to user if component is unmounted (likely due to ordering time)
+          log.error("Failed to initialize card", {
+            error: cardError,
+            message: cardError?.message,
+            stack: cardError?.stack,
+          });
+          // Don't show error to user if component is unmounted
           if (!isCancelled && isMountedRef.current) {
-            setError(`Failed to initialize card form: ${cardError.message || "Unknown error"}`);
+            const errorMessage = cardError?.message || cardError?.toString() || "Unknown error";
+            setError(`Failed to initialize payment form: ${errorMessage}`);
+            onPaymentError(`Payment form initialization failed: ${errorMessage}`);
           }
           isInitializingRef.current = false;
         }
@@ -546,10 +895,8 @@ export default function SquarePaymentForm({
             setError(errorMessage);
             onPaymentError(errorMessage);
           } else {
-            // Production logic for AU
-            const postalCodeError = locationCountry === 'AU'
-              ? "Postal code validation failed. Your Square location may need to be set to Australia in Square Dashboard."
-              : `Postal code validation failed. Please enter a valid postal code for ${locationCountry || 'your location'}.`;
+            // Production logic
+            const postalCodeError = `Postal code validation failed. Please enter a valid postal code${locationCountry ? ` for ${locationCountry}` : ''}.`;
             setError(postalCodeError);
             onPaymentError(postalCodeError);
           }
@@ -652,13 +999,6 @@ export default function SquarePaymentForm({
             <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
               <p className="font-medium mb-1">⚠️ Security Notice</p>
               <p>For secure payment processing, this page should be accessed over HTTPS. The payment form will still work, but some browser features may be limited.</p>
-            </div>
-          )}
-        {/* Postal Code warnings removed as we are forcing postal code disable */
-          locationCountry === 'AU' && (
-            <div className="p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-              <p className="font-medium mb-1">✓ Location Set to Australia</p>
-              <p>Postal code field has been disabled for this location.</p>
             </div>
           )}
         {/* Sandbox Notice */}
