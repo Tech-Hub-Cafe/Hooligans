@@ -11,10 +11,15 @@ const STATIC_ASSETS = [
 self.addEventListener('install', (event) => {
     console.log('[SW] Installing service worker...');
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            console.log('[SW] Caching static assets');
-            return cache.addAll(STATIC_ASSETS);
-        })
+        caches.open(CACHE_NAME)
+            .then((cache) => {
+                console.log('[SW] Caching static assets');
+                return cache.addAll(STATIC_ASSETS);
+            })
+            .catch((err) => {
+                console.error('[SW] Failed to cache static assets:', err);
+                // Don't fail installation if caching fails
+            })
     );
     // Activate immediately
     self.skipWaiting();
@@ -58,15 +63,32 @@ self.addEventListener('fetch', (event) => {
                     // Cache successful API responses
                     if (response.ok) {
                         const responseClone = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(request, responseClone);
-                        });
+                        caches.open(CACHE_NAME)
+                            .then((cache) => {
+                                cache.put(request, responseClone).catch((err) => {
+                                    console.warn('[SW] Failed to cache API response:', err);
+                                });
+                            })
+                            .catch((err) => {
+                                console.warn('[SW] Failed to open cache for API:', err);
+                            });
                     }
                     return response;
                 })
-                .catch(() => {
+                .catch((err) => {
                     // Fallback to cached API response
-                    return caches.match(request);
+                    console.debug('[SW] API fetch failed, trying cache:', err.message);
+                    return caches.match(request).then((cachedResponse) => {
+                        if (cachedResponse) {
+                            return cachedResponse;
+                        }
+                        // No cache available, return error
+                        return new Response('Network error', {
+                            status: 408,
+                            statusText: 'Request Timeout',
+                            headers: { 'Content-Type': 'text/plain' }
+                        });
+                    });
                 })
         );
         return;
@@ -77,25 +99,63 @@ self.addEventListener('fetch', (event) => {
         caches.match(request).then((cachedResponse) => {
             if (cachedResponse) {
                 // Return cached version, update cache in background
-                fetch(request).then((response) => {
-                    if (response.ok) {
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(request, response);
-                        });
-                    }
-                });
+                // Add error handling to prevent uncaught promise rejections
+                fetch(request)
+                    .then((response) => {
+                        if (response.ok) {
+                            caches.open(CACHE_NAME).then((cache) => {
+                                cache.put(request, response).catch((err) => {
+                                    console.warn('[SW] Failed to cache response:', err);
+                                });
+                            }).catch((err) => {
+                                console.warn('[SW] Failed to open cache:', err);
+                            });
+                        }
+                    })
+                    .catch((err) => {
+                        // Silently fail background cache update - we already have cached response
+                        console.debug('[SW] Background cache update failed (non-critical):', err.message);
+                    });
                 return cachedResponse;
             }
 
             // Not in cache, fetch from network
-            return fetch(request).then((response) => {
-                if (response.ok) {
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(request, responseClone);
+            return fetch(request)
+                .then((response) => {
+                    if (response.ok) {
+                        const responseClone = response.clone();
+                        caches.open(CACHE_NAME)
+                            .then((cache) => {
+                                cache.put(request, responseClone).catch((err) => {
+                                    console.warn('[SW] Failed to cache response:', err);
+                                });
+                            })
+                            .catch((err) => {
+                                console.warn('[SW] Failed to open cache:', err);
+                            });
+                    }
+                    return response;
+                })
+                .catch((err) => {
+                    // If network fails and no cache, return error response
+                    console.error('[SW] Fetch failed and no cache available:', err);
+                    return new Response('Network error', {
+                        status: 408,
+                        statusText: 'Request Timeout',
+                        headers: { 'Content-Type': 'text/plain' }
                     });
-                }
-                return response;
+                });
+        })
+        .catch((err) => {
+            console.error('[SW] Cache match failed:', err);
+            // Fallback: try network fetch
+            return fetch(request).catch((fetchErr) => {
+                console.error('[SW] Both cache and network failed:', fetchErr);
+                return new Response('Service unavailable', {
+                    status: 503,
+                    statusText: 'Service Unavailable',
+                    headers: { 'Content-Type': 'text/plain' }
+                });
             });
         })
     );

@@ -84,6 +84,7 @@ export async function POST(request: Request) {
     } = validationResult.data;
 
     // Validate and recalculate total server-side to prevent price manipulation
+    // Australian prices already include GST, so total = sum of item prices (which include GST)
     const calculatedTotal = items.reduce((sum, item) => {
       const itemTotal = item.price * item.quantity;
       if (!Number.isFinite(itemTotal) || itemTotal < 0) {

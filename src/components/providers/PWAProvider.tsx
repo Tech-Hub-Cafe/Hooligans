@@ -12,7 +12,24 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
     const [showInstallBanner, setShowInstallBanner] = useState(false);
 
     useEffect(() => {
-        // Register service worker
+        // Only register service worker in production (PWA is disabled in development)
+        if (process.env.NODE_ENV === 'development') {
+            // Unregister any existing service workers in development
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then((registrations) => {
+                    registrations.forEach((registration) => {
+                        registration.unregister().then((success) => {
+                            if (success) {
+                                console.log('[PWA] Service worker unregistered (development mode)');
+                            }
+                        });
+                    });
+                });
+            }
+            return;
+        }
+
+        // Register service worker in production
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker
                 .register('/sw.js')

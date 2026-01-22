@@ -248,9 +248,22 @@ export default function CartPage() {
     return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
+  // Calculate GST from total (Australian prices include GST)
+  // GST = total / 11 (since GST is 10% of base, and total = base * 1.1, so GST = total / 11)
+  const calculateGST = (totalIncludingGST: number) => {
+    return totalIncludingGST / 11; // Extract 10% GST from price that includes GST
+  };
+
+  // Calculate base price excluding GST
+  const calculateBasePrice = (totalIncludingGST: number) => {
+    return totalIncludingGST * 10 / 11; // Base price = total * 10/11
+  };
+
   // Calculate orderable items (items within ordering hours) and their total
   const orderableItems = cartItems.filter(item => getItemOrderingStatus(item).isAvailable);
-  const orderableTotal = orderableItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const orderableTotal = orderableItems.reduce((sum, item) => sum + item.price * item.quantity, 0); // Total already includes GST
+  const orderableGST = calculateGST(orderableTotal); // Extract GST from total
+  const orderableSubtotal = calculateBasePrice(orderableTotal); // Base price excluding GST
 
   const handlePaymentSuccess = async (paymentToken: string) => {
     setError("");
@@ -514,9 +527,17 @@ export default function CartPage() {
               ))}
 
               {/* Subtotal for mobile */}
-              <div className="lg:hidden p-4 bg-white rounded-xl shadow-md">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Subtotal</span>
+              <div className="lg:hidden p-4 bg-white rounded-xl shadow-md space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Subtotal (excl. GST)</span>
+                  <span>${calculateBasePrice(calculateTotal()).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">GST (10%)</span>
+                  <span>${calculateGST(calculateTotal()).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t">
+                  <span className="font-semibold">Total (incl. GST)</span>
                   <span className="text-xl font-bold text-teal">
                     ${calculateTotal().toFixed(2)}
                   </span>
@@ -732,15 +753,15 @@ export default function CartPage() {
 
                     <div className="pt-4 border-t space-y-3">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Subtotal</span>
-                        <span>${calculateTotal().toFixed(2)}</span>
+                        <span className="text-gray-500">Subtotal (excl. GST)</span>
+                        <span>${calculateBasePrice(calculateTotal()).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Tax</span>
-                        <span>$0.00</span>
+                        <span className="text-gray-500">GST (10%)</span>
+                        <span>${calculateGST(calculateTotal()).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="font-semibold">Total</span>
+                        <span className="font-semibold">Total (incl. GST)</span>
                         <span className="text-2xl font-bold text-teal">
                           ${calculateTotal().toFixed(2)}
                         </span>
