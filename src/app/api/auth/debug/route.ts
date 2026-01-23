@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 // Debug endpoint to check users in database
 // Only available in development
@@ -21,8 +22,21 @@ export async function GET() {
       },
     });
 
+    // Define the type based on the select query
+    type DebugUser = Prisma.UserGetPayload<{
+      select: {
+        id: true;
+        email: true;
+        name: true;
+        provider: true;
+        password: true;
+        is_admin: true;
+        created_at: true;
+      };
+    }>;
+
     // Map users with password status
-    const usersWithPasswordStatus = users.map((user) => ({
+    const usersWithPasswordStatus = users.map((user: DebugUser) => ({
       ...user,
       hasPassword: !!user.password,
       password: user.password ? "***hidden***" : null, // Don't expose actual password

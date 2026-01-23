@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/adminAuth";
 
 export async function GET() {
@@ -21,7 +22,19 @@ export async function GET() {
       orderBy: { created_at: "desc" },
     });
 
-    return NextResponse.json(orders.map((order: any) => ({
+    // Define the type for the order with user relation
+    type OrderWithUser = Prisma.OrderGetPayload<{
+      include: {
+        user: {
+          select: {
+            name: true;
+            email: true;
+          };
+        };
+      };
+    }>;
+
+    return NextResponse.json(orders.map((order: OrderWithUser) => ({
       ...order,
       total: parseFloat(order.total.toString()),
       items: order.items as any,
