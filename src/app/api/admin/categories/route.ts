@@ -12,7 +12,7 @@ export async function GET() {
   try {
     // Fetch all disabled categories from database
     const disabledCategories = await prisma.disabledCategory.findMany();
-    const disabledCategoryNames = new Set(disabledCategories.map(cat => cat.category_name));
+    const disabledCategoryNames = new Set(disabledCategories.map((cat: { category_name: string }) => cat.category_name));
 
     // Fetch categories from Square (we need to get them from the menu API)
     // For now, we'll return the disabled categories and let the frontend fetch categories separately
