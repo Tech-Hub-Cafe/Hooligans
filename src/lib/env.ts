@@ -89,10 +89,15 @@ export function validateEnv(): void {
 
 /**
  * Type-safe environment variable access
+ * During build time, some variables may not be available, so we use getEnv instead of requireEnv
  */
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build" || 
+                    (typeof process !== "undefined" && process.env.NODE_ENV === "production" && 
+                     !process.env.VERCEL && !process.env.DATABASE_URL);
+
 export const env = {
-  // Database
-  DATABASE_URL: requireEnv("DATABASE_URL"),
+  // Database - use getEnv to avoid build-time errors
+  DATABASE_URL: getEnv("DATABASE_URL") || "",
 
   // Authentication
   AUTH_SECRET: getEnv("AUTH_SECRET") || getEnv("NEXTAUTH_SECRET") || "",
@@ -116,8 +121,9 @@ export const env = {
   isTest: () => process.env.NODE_ENV === "test",
 };
 
-// Validate on import (only in non-test environments)
-if (process.env.NODE_ENV !== "test") {
+// Validate on import (only in non-test environments and not during build)
+// Skip validation during build time to allow builds to complete
+if (process.env.NODE_ENV !== "test" && !isBuildTime) {
   try {
     validateEnv();
   } catch (error) {

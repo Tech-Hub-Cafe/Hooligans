@@ -13,7 +13,13 @@ const globalForPrisma = globalThis as unknown as {
 
 const connectionString = process.env.DATABASE_URL;
 
-if (!connectionString) {
+// Only throw error at runtime, not during build
+// During build, DATABASE_URL may not be available
+// Check if we're in a build context (Vercel sets VERCEL=1, but DATABASE_URL might not be available during build)
+const isBuildTime = process.env.NEXT_PHASE === "phase-production-build" || 
+                    (process.env.NODE_ENV === "production" && process.env.VERCEL && !process.env.DATABASE_URL);
+
+if (!connectionString && !isBuildTime) {
   throw new Error("DATABASE_URL environment variable is not set");
 }
 
