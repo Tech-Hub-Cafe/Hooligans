@@ -67,8 +67,10 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     if (settings) {
+      // Update form data when settings are loaded
       setFormData(settings);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
   const updateMutation = useMutation({

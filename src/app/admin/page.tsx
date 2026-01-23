@@ -6,7 +6,6 @@ import {
   ShoppingCart,
   DollarSign,
   UtensilsCrossed,
-  Users,
   TrendingUp,
   Clock,
 } from "lucide-react";

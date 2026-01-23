@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { listCatalogItems, searchCatalogObjects, squareMoneyToDollars, isSquareConfigured } from "@/lib/square";
+import { listCatalogItems, searchCatalogObjects, squareMoneyToDollars, isSquareConfigured, extractSquareError } from "@/lib/square";
 import {
   buildCategoryMap,
-  extractCategoryIds,
   resolveCategoryNames,
   normalizeItem,
   separateCatalogObjects,
 } from "@/lib/squareCatalogParser";
 
 // Helper to safely serialize objects for logging (converts BigInt to string)
-function safeSerialize(obj: any): any {
+function safeSerialize(obj: unknown): unknown {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'bigint') return obj.toString();
   if (Array.isArray(obj)) return obj.map(safeSerialize);
-  if (typeof obj === 'object') {
-    const result: any = {};
+  if (typeof obj === 'object' && obj !== null) {
+    const result: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
       result[key] = safeSerialize(value);
     }
@@ -600,22 +599,22 @@ export async function GET(request: Request) {
         source: "square",
         count: serializedItems.length,
       });
-    } catch (squareError: any) {
-      const statusCode = squareError?.statusCode || squareError?.status;
-      const errors = squareError?.errors || [];
-      const isAuthError = statusCode === 401 || statusCode === 403;
+    } catch (squareError: unknown) {
+      const errorDetails = extractSquareError(squareError);
+      const statusCode = errorDetails.statusCode;
+      const errors = errorDetails.errors || [];
+      const isAuthError = errorDetails.isAuthError;
 
       console.error("[Menu API] Square API Error:", {
-        message: squareError?.message,
+        message: errorDetails.message,
         errors: errors,
         statusCode: statusCode,
         tokenPreview: process.env.SQUARE_ACCESS_TOKEN?.substring(0, 10) + "...",
         isAuthError,
-        troubleshooting: squareError?.troubleshooting,
       });
 
       // Add helpful error message for 401 errors
-      let errorMessage = squareError?.message || "Failed to fetch menu items from Square";
+      let errorMessage = errorDetails.message;
       if (isAuthError) {
         errorMessage = `Square API Authentication Error (401): ${errorMessage}. This usually means:
 1. Environment mismatch (production token with sandbox endpoints or vice versa)
@@ -635,27 +634,30 @@ Visit /api/square/debug-401 for detailed diagnostics.`;
         {
           error: true,
           source: "square",
-          message: errorMessage,
+          message: errorMessage || "An unexpected error occurred",
           errors: errors,
           statusCode: statusCode,
-          troubleshooting: isAuthError ? squareError?.troubleshooting : undefined,
+          troubleshooting: isAuthError ? "Check your Square API credentials and environment settings" : undefined,
           items: [],
           count: 0,
         },
         { status: statusCode || 500 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
     console.error("[Menu API] Fatal Error:", {
-      message: error?.message,
-      stack: error?.stack,
+      message: errorMessage,
+      stack: errorStack,
     });
 
     return NextResponse.json(
       {
         error: true,
         message: "Failed to fetch menu items",
-        details: error?.message || "Unknown error",
+        details: errorMessage,
         items: [],
         count: 0,
       },

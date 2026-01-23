@@ -35,7 +35,25 @@ export async function GET() {
     const disabledSquareIds = new Set(disabledItems.map(item => item.square_id));
 
     // Fetch items from Square (same logic as public menu API)
-    const allCatalogObjects: any[] = [];
+    interface CatalogObject {
+      type?: string;
+      id?: string;
+      itemData?: {
+        variations?: Array<{
+          id?: string;
+          itemVariationData?: {
+            priceMoney?: {
+              amount?: number | bigint;
+            };
+            [key: string]: unknown;
+          };
+          [key: string]: unknown;
+        }>;
+        [key: string]: unknown;
+      };
+      [key: string]: unknown;
+    }
+    const allCatalogObjects: CatalogObject[] = [];
     let cursor: string | null = null;
     let pageCount = 0;
     
@@ -66,27 +84,36 @@ export async function GET() {
     const categoryMapObj = buildCategoryMap(categories);
     
     // Process items
-    const items = catalogItems.map((item: any) => {
+    const items = catalogItems.map((item: CatalogObject) => {
       const variation = item.itemData?.variations?.[0];
       const normalized = normalizeItem(item, categoryMapObj, itemVariations);
       const categoryNames = resolveCategoryNames(normalized.categoryIds, categoryMapObj);
       const categoryName = categoryNames.length > 0 ? categoryNames[0] : "Uncategorized";
       
       // Check if item is disabled
-      const isDisabled = disabledSquareIds.has(item.id);
+      const isDisabled = item.id ? disabledSquareIds.has(item.id) : false;
       
       // Get price
       let price = 0;
-      if (variation?.itemVariationData?.priceMoney?.amount) {
-        const amount = variation.itemVariationData.priceMoney.amount;
-        price = typeof amount === 'bigint' 
-          ? Number(amount) / 100 
-          : squareMoneyToDollars(amount);
+      if (variation && typeof variation === 'object' && 'itemVariationData' in variation) {
+        const variationData = variation as { itemVariationData?: { priceMoney?: { amount?: number | bigint } } };
+        if (variationData.itemVariationData?.priceMoney?.amount) {
+          const amount = variationData.itemVariationData.priceMoney.amount;
+          price = typeof amount === 'bigint' 
+            ? Number(amount) / 100 
+            : squareMoneyToDollars(amount as number);
+        }
       }
 
       // Get image
       let imageUrl: string | null = null;
-      const imageIds = item.itemData?.imageIds || variation?.itemVariationData?.imageIds || [];
+      const itemImageIds = Array.isArray(item.itemData?.imageIds) ? item.itemData.imageIds : [];
+      const variationImageIds = variation && typeof variation === 'object' && 'itemVariationData' in variation
+        ? (Array.isArray((variation as { itemVariationData?: { imageIds?: unknown[] } }).itemVariationData?.imageIds)
+          ? (variation as { itemVariationData: { imageIds: string[] } }).itemVariationData.imageIds
+          : [])
+        : [];
+      const imageIds = itemImageIds.length > 0 ? itemImageIds : variationImageIds;
       if (imageIds.length > 0) {
         // For simplicity, we'll just note that images exist
         // Full image fetching would require another API call

@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/adminAuth";
 
+interface OrderItem {
+  id: number;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -33,7 +40,7 @@ export async function GET(
     return NextResponse.json({
       ...order,
       total: parseFloat(order.total.toString()),
-      items: order.items as any,
+      items: order.items as unknown as OrderItem[],
       user_name: order.user?.name || null,
       user_email: order.user?.email || null,
     });
@@ -68,7 +75,7 @@ export async function PUT(
     return NextResponse.json({
       ...order,
       total: parseFloat(order.total.toString()),
-      items: order.items as any,
+      items: order.items as unknown as OrderItem[],
     });
   } catch (error) {
     console.error("Error updating order:", error);

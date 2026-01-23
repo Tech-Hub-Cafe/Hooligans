@@ -210,47 +210,7 @@ export default function AdminOrderingTimePage() {
   const [timePickerState, setTimePickerState] = useState<Record<string, { start: string; end: string; closed: boolean }>>({});
   const initializedRef = useRef(false);
 
-  // Initialize time picker state from form data
-  // Update whenever hours change (not just on first load) to reflect saved data
-  useEffect(() => {
-    if (hours) {
-      const state: Record<string, { start: string; end: string; closed: boolean }> = {};
-      const allDays = [
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-        "Sunday",
-      ];
-      const allFields = [
-        ...allDays.map((d) => `${d.toLowerCase()}_food_ordering_hours`),
-        ...allDays.map((d) => `${d.toLowerCase()}_drinks_ordering_hours`),
-      ];
-
-      allFields.forEach((field) => {
-        const value = hours[field as keyof OrderingHours];
-        const parsed = parseTimeStringToTimeInput(value || null);
-        state[field] = {
-          start: parsed?.start || "09:00",
-          end: parsed?.end || "17:00",
-          closed: !value || (typeof value === "string" && value.trim().toLowerCase() === "closed"),
-        };
-      });
-
-      console.log("[AdminOrderingTime] Initializing timePickerState from hours:", Object.keys(state).length, "fields");
-      setTimePickerState(state);
-      // Update formData to match hours
-      setFormData(hours);
-      // Mark as initialized after first load, but allow updates when hours change
-      if (!initializedRef.current) {
-        initializedRef.current = true;
-      }
-    }
-  }, [hours]);
-
-  // Helper functions to parse and format times
+  // Helper functions to parse and format times (defined before use)
   const parseTimeStringToTimeInput = (timeStr: string | null | undefined): { start: string; end: string } | null => {
     if (!timeStr || timeStr.trim().toLowerCase() === "closed") {
       return null;
@@ -302,6 +262,46 @@ export default function AdminOrderingTimePage() {
 
     return { start, end };
   };
+
+  // Initialize time picker state from form data
+  // Update whenever hours change (not just on first load) to reflect saved data
+  useEffect(() => {
+    if (hours) {
+      const state: Record<string, { start: string; end: string; closed: boolean }> = {};
+      const allDays = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ];
+      const allFields = [
+        ...allDays.map((d) => `${d.toLowerCase()}_food_ordering_hours`),
+        ...allDays.map((d) => `${d.toLowerCase()}_drinks_ordering_hours`),
+      ];
+
+      allFields.forEach((field) => {
+        const value = hours[field as keyof OrderingHours];
+        const parsed = parseTimeStringToTimeInput(value || null);
+        state[field] = {
+          start: parsed?.start || "09:00",
+          end: parsed?.end || "17:00",
+          closed: !value || (typeof value === "string" && value.trim().toLowerCase() === "closed"),
+        };
+      });
+
+      console.log("[AdminOrderingTime] Initializing timePickerState from hours:", Object.keys(state).length, "fields");
+      setTimePickerState(state);
+      // Update formData to match hours
+      setFormData(hours);
+      // Mark as initialized after first load, but allow updates when hours change
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+      }
+    }
+  }, [hours]);
 
   const formatTimeInputToString = (startTime: string, endTime: string): string => {
     if (!startTime || !endTime) {
