@@ -20,8 +20,8 @@ export async function GET() {
       },
       orderBy: { created_at: "desc" },
     });
-    
-    return NextResponse.json(orders.map(order => ({
+
+    return NextResponse.json(orders.map((order: any) => ({
       ...order,
       total: parseFloat(order.total.toString()),
       items: order.items as any,
