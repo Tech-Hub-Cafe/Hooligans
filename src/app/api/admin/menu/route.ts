@@ -32,7 +32,7 @@ export async function GET() {
 
     // Fetch all disabled items from database
     const disabledItems = await prisma.disabledMenuItem.findMany();
-    const disabledSquareIds = new Set(disabledItems.map(item => item.square_id));
+    const disabledSquareIds = new Set(disabledItems.map((item: { square_id: string | null }) => item.square_id));
 
     // Fetch items from Square (same logic as public menu API)
     interface CatalogObject {
