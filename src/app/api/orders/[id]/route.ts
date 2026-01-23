@@ -41,7 +41,7 @@ export async function GET(
     return NextResponse.json({
       ...order,
       total: parseFloat(order.total.toString()),
-      items: order.items as OrderItem[],
+      items: order.items as unknown as OrderItem[],
     });
   } catch (error) {
     console.error("Error fetching order:", error);
@@ -81,7 +81,7 @@ export async function PUT(
     return NextResponse.json({
       ...order,
       total: parseFloat(order.total.toString()),
-      items: order.items as OrderItem[],
+      items: order.items as unknown as OrderItem[],
     });
   } catch (error) {
     console.error("Error updating order:", error);

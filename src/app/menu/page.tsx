@@ -670,7 +670,7 @@ export default function MenuPage() {
                             <div className="mt-2 flex items-center gap-2">
                               <span className="text-sm text-gray-600">In cart: {quantity}</span>
                               <Button
-                                onClick={() => removeFromCart(item.id)}
+                                onClick={() => removeFromCart(typeof item.id === 'number' ? item.id : parseInt(String(item.id)))}
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"

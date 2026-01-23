@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     const formattedOrders = orders.map((order) => ({
       ...order,
       total: parseFloat(order.total.toString()),
-      items: order.items as OrderItem[],
+      items: order.items as unknown as OrderItem[],
     }));
 
     return NextResponse.json(formattedOrders);
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { 
           error: "Validation failed",
-          details: validationResult.error.errors.map(e => ({
+          details: validationResult.error.issues.map(e => ({
             field: e.path.join("."),
             message: e.message,
           })),
@@ -175,14 +175,14 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(
-      {
-        ...order,
-        total: parseFloat(order.total.toString()),
-        items: order.items as OrderItem[],
-      },
-      { status: 201 }
-    );
+      return NextResponse.json(
+        {
+          ...order,
+          total: parseFloat(order.total.toString()),
+          items: order.items as unknown as OrderItem[],
+        },
+        { status: 201 }
+      );
   } catch (error) {
     console.error("Error creating order:", error);
     return NextResponse.json(

@@ -298,7 +298,7 @@ export async function GET(request: Request) {
                   }
                   return null;
                 })
-                .filter((m): m is Modifier => m !== null);
+                .filter((m: Modifier | null): m is Modifier => m !== null);
             }
 
             console.log(`[Menu API] Modifier list "${modList.modifierListData.name}":`, {
@@ -425,7 +425,7 @@ export async function GET(request: Request) {
             }
             return undefined;
           })
-          .filter((ml): ml is ModifierList => ml !== undefined);
+          .filter((ml): ml is ModifierList & { required: boolean } => ml !== undefined);
 
         // Get image URL for this item
         // Square items can have images in:

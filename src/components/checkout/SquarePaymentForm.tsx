@@ -659,7 +659,7 @@ export default function SquarePaymentForm({
             });
 
             // Wrap cardPromise to catch and log any errors
-            const wrappedCardPromise = cardPromise.catch((err) => {
+            const wrappedCardPromise = cardPromise.catch((err: unknown) => {
               log.error("Card promise rejected", err);
               throw err;
             });

@@ -27,7 +27,7 @@ import Link from "next/link";
 import SquarePaymentForm from "@/components/checkout/SquarePaymentForm";
 import { getCart, setCart, clearCart } from "@/lib/cartStorage";
 import EditCartItemDialog from "@/components/cart/EditCartItemDialog";
-import { getItemType } from "@/lib/itemCategory";
+import { getItemTypeFromCategory } from "@/lib/itemCategory";
 
 export default function CartPage() {
   const router = useRouter();
@@ -71,7 +71,16 @@ export default function CartPage() {
   const getItemOrderingStatus = (item: CartItem) => {
     if (!orderingStatus) return { isAvailable: true, message: "" };
     
-    const itemType = getItemType(item as MenuItem);
+    // Find the menu item to get its category
+    const menuItem = menuItems.find(
+      (mi) => mi.id === item.originalItemId || 
+              mi.id === item.id || 
+              mi.square_id === item.square_id ||
+              mi.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+    );
+    
+    const category = menuItem?.category || "";
+    const itemType = getItemTypeFromCategory(category);
     const status = itemType === "drinks" ? orderingStatus.drinks : orderingStatus.food;
     
     return {

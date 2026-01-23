@@ -1,14 +1,22 @@
 import { handlers } from "@/lib/auth";
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { rateLimit, getClientIdentifier } from "@/lib/rateLimit";
 
 // Wrap handlers with error handling to prevent HTML error pages
 async function handleRequest(
-  handler: (request: Request) => Promise<Response>,
-  request: Request
+  handler: (request: NextRequest) => Promise<Response>,
+  request: Request | NextRequest
 ): Promise<Response> {
   try {
-    const response = await handler(request);
+    // Convert Request to NextRequest if needed
+    const nextRequest = request instanceof Request && !('nextUrl' in request)
+      ? new NextRequest(request.url, { 
+          method: request.method,
+          headers: request.headers,
+          body: request.body,
+        })
+      : request as NextRequest;
+    const response = await handler(nextRequest);
     
     // Ensure response is JSON-compatible
     if (!response.ok) {
@@ -91,30 +99,35 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const isSessionRequest = url.pathname.includes("/api/auth/session");
     
-    // Rate limiting: 10 requests per 15 minutes per IP for auth endpoints
-    // But be more lenient for session requests (they happen frequently)
+    // Rate limiting: More lenient limits for auth endpoints
+    // Disabled in development mode
     const identifier = getClientIdentifier(request);
-    const rateLimitWindow = isSessionRequest ? 30 * 60 * 1000 : 15 * 60 * 1000; // 30 min for session, 15 min for others
-    const rateLimitMax = isSessionRequest ? 30 : 10; // More requests allowed for session checks
+    const isDevelopment = process.env.NODE_ENV === "development";
     
-    const rateLimitResult = rateLimit(`auth:${identifier}`, rateLimitMax, rateLimitWindow);
-    
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { 
-          error: "Too many requests. Please try again later.",
-          retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
-        },
-        { 
-          status: 429,
-          headers: {
-            "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
-            "X-RateLimit-Limit": rateLimitMax.toString(),
-            "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": new Date(rateLimitResult.resetAt).toISOString(),
+    if (!isDevelopment) {
+      // But be more lenient for session requests (they happen frequently)
+      const rateLimitWindow = isSessionRequest ? 30 * 60 * 1000 : 15 * 60 * 1000; // 30 min for session, 15 min for others
+      const rateLimitMax = isSessionRequest ? 50 : 20; // Increased limits: 50 for session, 20 for others
+      
+      const rateLimitResult = rateLimit(`auth:${identifier}`, rateLimitMax, rateLimitWindow);
+      
+      if (!rateLimitResult.allowed) {
+        return NextResponse.json(
+          { 
+            error: "Too many requests. Please try again later.",
+            retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
           },
-        }
-      );
+          { 
+            status: 429,
+            headers: {
+              "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
+              "X-RateLimit-Limit": rateLimitMax.toString(),
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": new Date(rateLimitResult.resetAt).toISOString(),
+            },
+          }
+        );
+      }
     }
 
     if (!handlers?.GET) {
@@ -184,26 +197,32 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // Rate limiting: 10 requests per 15 minutes per IP for auth endpoints
+    // Rate limiting: More lenient limits for auth endpoints
+    // 20 requests per 15 minutes per IP (increased from 10)
+    // Disabled in development mode
     const identifier = getClientIdentifier(request);
-    const rateLimitResult = rateLimit(`auth:${identifier}`, 10, 15 * 60 * 1000);
+    const isDevelopment = process.env.NODE_ENV === "development";
     
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { 
-          error: "Too many requests. Please try again later.",
-          retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
-        },
-        { 
-          status: 429,
-          headers: {
-            "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
-            "X-RateLimit-Limit": "10",
-            "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": new Date(rateLimitResult.resetAt).toISOString(),
+    if (!isDevelopment) {
+      const rateLimitResult = rateLimit(`auth:${identifier}`, 20, 15 * 60 * 1000);
+      
+      if (!rateLimitResult.allowed) {
+        return NextResponse.json(
+          { 
+            error: "Too many requests. Please try again later.",
+            retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
           },
-        }
-      );
+          { 
+            status: 429,
+            headers: {
+              "Retry-After": Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
+              "X-RateLimit-Limit": "20",
+              "X-RateLimit-Remaining": "0",
+              "X-RateLimit-Reset": new Date(rateLimitResult.resetAt).toISOString(),
+            },
+          }
+        );
+      }
     }
 
     if (!handlers?.POST) {
