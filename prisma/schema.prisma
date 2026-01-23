@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,17 +7,15 @@ datasource db {
 }
 
 model User {
-  id         Int      @id @default(autoincrement())
-  email      String   @unique @db.VarChar(255)
-  password   String?  @db.VarChar(255) // NULL for OAuth users (Google)
-  name       String?  @db.VarChar(255)
-  phone      String?  @db.VarChar(50)
-  image      String?  @db.Text
-  provider   String   @default("credentials") @db.VarChar(50) // 'credentials' or 'google'
-  created_at DateTime @default(now())
-  is_admin   Boolean  @default(false)
-
-  // Relations
+  id                    Int                  @id @default(autoincrement())
+  email                 String               @unique @db.VarChar(255)
+  password              String?              @db.VarChar(255)
+  name                  String?              @db.VarChar(255)
+  phone                 String?              @db.VarChar(50)
+  image                 String?
+  provider              String               @default("credentials") @db.VarChar(50)
+  created_at            DateTime             @default(now()) @db.Timestamp(6)
+  is_admin              Boolean              @default(false)
   orders                Order[]
   password_reset_tokens PasswordResetToken[]
 
@@ -31,12 +26,12 @@ model User {
 model MenuItem {
   id          Int      @id @default(autoincrement())
   name        String   @db.VarChar(255)
-  description String?  @db.Text
+  description String?
   price       Decimal  @db.Decimal(10, 2)
   category    String   @db.VarChar(50)
-  image_url   String?  @db.Text
+  image_url   String?
   available   Boolean  @default(true)
-  created_at  DateTime @default(now())
+  created_at  DateTime @default(now()) @db.Timestamp(6)
 
   @@index([category])
   @@index([available])
@@ -48,17 +43,15 @@ model Order {
   customer_name        String    @db.VarChar(255)
   customer_email       String    @db.VarChar(255)
   customer_phone       String?   @db.VarChar(50)
-  items                Json // Array of order items: [{id, name, price, quantity}]
+  items                Json
   total                Decimal   @db.Decimal(10, 2)
-  status               String    @default("pending") @db.VarChar(50) // 'pending', 'confirmed', 'preparing', 'ready', 'completed', 'cancelled'
-  special_instructions String?   @db.Text
+  status               String    @default("pending") @db.VarChar(50)
+  special_instructions String?
   user_id              Int?
   square_payment_id    String?   @db.VarChar(255)
-  created_at           DateTime  @default(now())
-  updated_at           DateTime? @updatedAt
-
-  // Relations
-  user User? @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  created_at           DateTime  @default(now()) @db.Timestamp(6)
+  updated_at           DateTime? @updatedAt @db.Timestamp(6)
+  user                 User?     @relation(fields: [user_id], references: [id], onUpdate: NoAction)
 
   @@index([user_id])
   @@index([status])
@@ -70,7 +63,7 @@ model CafeSettings {
   id                              Int       @id @default(autoincrement())
   cafe_name                       String?   @default("Hooligans") @db.VarChar(255)
   tagline                         String?   @db.VarChar(500)
-  description                     String?   @db.Text
+  description                     String?
   address                         String?   @db.VarChar(500)
   phone                           String?   @db.VarChar(50)
   email                           String?   @db.VarChar(255)
@@ -100,7 +93,7 @@ model CafeSettings {
   twitter_url                     String?   @db.VarChar(500)
   tiktok_url                      String?   @db.VarChar(500)
   timezone                        String    @default("Australia/Sydney") @db.VarChar(100)
-  updated_at                      DateTime? @updatedAt
+  updated_at                      DateTime? @updatedAt @db.Timestamp(6)
 
   @@map("cafe_settings")
 }
@@ -108,7 +101,7 @@ model CafeSettings {
 model DisabledMenuItem {
   id         Int      @id @default(autoincrement())
   square_id  String   @unique @db.VarChar(255)
-  created_at DateTime @default(now())
+  created_at DateTime @default(now()) @db.Timestamp(6)
 
   @@index([square_id])
   @@map("disabled_menu_items")
@@ -117,7 +110,7 @@ model DisabledMenuItem {
 model DisabledCategory {
   id            Int      @id @default(autoincrement())
   category_name String   @unique @db.VarChar(255)
-  created_at    DateTime @default(now())
+  created_at    DateTime @default(now()) @db.Timestamp(6)
 
   @@index([category_name])
   @@map("disabled_categories")
@@ -127,12 +120,10 @@ model PasswordResetToken {
   id         Int      @id @default(autoincrement())
   token      String   @unique @db.VarChar(255)
   user_id    Int
-  expires_at DateTime
+  expires_at DateTime @db.Timestamp(6)
   used       Boolean  @default(false)
-  created_at DateTime @default(now())
-
-  // Relations
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([token])
   @@index([user_id])

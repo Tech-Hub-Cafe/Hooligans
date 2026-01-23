@@ -21,9 +21,26 @@ async function handleRequest(
     // Ensure response is JSON-compatible
     if (!response.ok) {
       const status = response.status;
-      const statusText = response.statusText;
+      const statusText = response.statusText || "Unknown error";
       
       console.error(`[NextAuth] Handler returned error: ${status} ${statusText}`);
+      
+      // Try to get more details from the response body
+      let errorDetails = statusText;
+      try {
+        const clonedResponse = response.clone();
+        const contentType = clonedResponse.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await clonedResponse.json();
+          if (errorData?.message) {
+            errorDetails = errorData.message;
+          } else if (errorData?.error) {
+            errorDetails = errorData.error;
+          }
+        }
+      } catch {
+        // If we can't parse the response, use statusText
+      }
       
       // If response is HTML (error page), convert to JSON
       const contentType = response.headers.get("content-type");
@@ -33,16 +50,28 @@ async function handleRequest(
         
         // Determine error code based on status
         let errorCode = "AuthenticationError";
-        if (status === 401) errorCode = "Unauthorized";
-        else if (status === 403) errorCode = "Forbidden";
-        else if (status === 404) errorCode = "NotFound";
-        else if (status >= 500) errorCode = "ServerError";
+        let errorMessage = statusText || "An error occurred";
+        
+        if (status === 401) {
+          errorCode = "Unauthorized";
+          errorMessage = "Unauthorized access";
+        } else if (status === 403) {
+          errorCode = "Forbidden";
+          errorMessage = "Access forbidden";
+        } else if (status === 404) {
+          errorCode = "NotFound";
+          errorMessage = "Resource not found";
+        } else if (status >= 500) {
+          errorCode = "ServerError";
+          errorMessage = "Internal server error";
+        }
         
         return NextResponse.json(
           {
             error: errorCode,
-            message: `Authentication service error: ${statusText}`,
+            message: `Authentication service error: ${errorMessage}`,
             status,
+            ...(process.env.NODE_ENV === "development" && { details: errorDetails }),
           },
           { 
             status,
@@ -51,6 +80,30 @@ async function handleRequest(
             },
           }
         );
+      }
+      
+      // If response is not OK and not HTML, try to extract error from response
+      if (!response.ok && status >= 500) {
+        try {
+          const errorData = await response.json().catch(() => null);
+          if (errorData?.error || errorData?.message) {
+            return NextResponse.json(
+              {
+                error: errorData.error || "ServerError",
+                message: errorData.message || `Authentication service error: ${statusText || "Internal server error"}`,
+                status,
+              },
+              { 
+                status,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+          }
+        } catch {
+          // If we can't parse JSON, fall through to default error
+        }
       }
     }
     

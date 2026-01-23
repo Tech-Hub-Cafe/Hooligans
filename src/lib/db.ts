@@ -35,6 +35,13 @@ const getPrisma = () => {
     return globalForPrisma.prisma;
   }
 
+  // Check if DATABASE_URL is available at runtime
+  if (!connectionString) {
+    const error = new Error("DATABASE_URL environment variable is not set. Please configure your database connection.");
+    console.error("[Prisma] Database connection error:", error.message);
+    throw error;
+  }
+
   // Create a PostgreSQL pool for the adapter with optimized connection limits
   // This prevents "too many clients" errors, especially on free tier databases
   const pool = new PgPool({
