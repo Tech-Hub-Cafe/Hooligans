@@ -1,8 +1,31 @@
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+// Create SMTP transporter for GoDaddy email
+const getTransporter = () => {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = process.env.SMTP_PORT;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPassword = process.env.SMTP_PASSWORD;
+
+  if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
+    return null;
+  }
+
+  const port = parseInt(smtpPort, 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+
+  return nodemailer.createTransport({
+    host: smtpHost,
+    port: port,
+    secure: secure, // true for 465, false for other ports
+    auth: {
+      user: smtpUser,
+      pass: smtpPassword,
+    },
+  });
+};
+
+const transporter = getTransporter();
 
 export async function sendReceipt({
   to,
@@ -17,26 +40,22 @@ export async function sendReceipt({
   total: number;
   customerName: string;
 }) {
-  if (!resend) {
-    console.warn('[Email] Resend not configured, skipping receipt email');
+  if (!transporter) {
+    console.warn('[Email] SMTP not configured, skipping receipt email');
     return null;
   }
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'orders@hooligans.com.au',
-      to: [to],
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'orders@hooligans.com.au';
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: to,
       subject: `Receipt for Order ${orderNumber}`,
       html: generateReceiptHTML({ orderNumber, items, total, customerName }),
     });
 
-    if (error) {
-      console.error('[Email] Receipt send error:', error);
-      throw error;
-    }
-
-    console.log('[Email] Receipt sent successfully:', data);
-    return data;
+    console.log('[Email] Receipt sent successfully:', info.messageId);
+    return { id: info.messageId, messageId: info.messageId };
   } catch (error) {
     console.error('[Email] Failed to send receipt:', error);
     throw error;
@@ -52,26 +71,22 @@ export async function sendOrderConfirmation({
   orderNumber: string;
   customerName: string;
 }) {
-  if (!resend) {
-    console.warn('[Email] Resend not configured, skipping confirmation email');
+  if (!transporter) {
+    console.warn('[Email] SMTP not configured, skipping confirmation email');
     return null;
   }
 
   try {
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'orders@hooligans.com.au',
-      to: [to],
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'orders@hooligans.com.au';
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: to,
       subject: `Order Confirmation - ${orderNumber}`,
       html: generateConfirmationHTML({ orderNumber, customerName }),
     });
 
-    if (error) {
-      console.error('[Email] Confirmation send error:', error);
-      throw error;
-    }
-
-    console.log('[Email] Confirmation sent successfully:', data);
-    return data;
+    console.log('[Email] Confirmation sent successfully:', info.messageId);
+    return { id: info.messageId, messageId: info.messageId };
   } catch (error) {
     console.error('[Email] Failed to send confirmation:', error);
     throw error;
@@ -87,29 +102,25 @@ export async function sendPasswordResetEmail({
   resetToken: string;
   userName?: string | null;
 }) {
-  if (!resend) {
-    console.warn('[Email] Resend not configured, skipping password reset email');
+  if (!transporter) {
+    console.warn('[Email] SMTP not configured, skipping password reset email');
     return null;
   }
 
   try {
     const resetUrl = `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
     const displayName = userName || 'there';
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@hooligans.com.au';
 
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'noreply@hooligans.com.au',
-      to: [to],
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: to,
       subject: 'Reset Your Password - Hooligans',
       html: generatePasswordResetHTML({ resetUrl, displayName }),
     });
 
-    if (error) {
-      console.error('[Email] Password reset send error:', error);
-      throw error;
-    }
-
-    console.log('[Email] Password reset email sent successfully:', data);
-    return data;
+    console.log('[Email] Password reset email sent successfully:', info.messageId);
+    return { id: info.messageId, messageId: info.messageId };
   } catch (error) {
     console.error('[Email] Failed to send password reset email:', error);
     throw error;

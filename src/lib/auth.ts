@@ -53,9 +53,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           }
 
           // Single optimized query with normalized email
-          // All emails should be normalized by now, but if legacy data exists,
-          // we use a case-insensitive raw query as fallback
-          let user = await prisma.user.findUnique({
+          // All emails should be normalized by now
+          const user = await prisma.user.findUnique({
             where: { email },
             select: {
               id: true,
@@ -67,37 +66,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               provider: true,
             },
           });
-
-          // Fallback for legacy data: case-insensitive search using raw SQL
-          // This is more efficient than fetching all users
-          if (!user) {
-            if (process.env.NODE_ENV === "development") {
-              console.log("[NextAuth] User not found with exact match, trying case-insensitive search");
-            }
-            
-            // Use Prisma.sql for better type safety and SQL injection protection
-            const users = await prisma.$queryRaw<Array<{
-              id: number;
-              email: string;
-              password: string | null;
-              name: string | null;
-              image: string | null;
-              is_admin: boolean;
-              provider: string;
-            }>>`
-              SELECT id, email, password, name, image, is_admin, provider
-              FROM users
-              WHERE LOWER(email) = LOWER(${email})
-              LIMIT 1
-            `;
-            
-            if (users.length > 0) {
-              user = users[0];
-              if (process.env.NODE_ENV === "development") {
-                console.log("[NextAuth] Found user with case-insensitive search:", user.email);
-              }
-            }
-          }
 
           if (!user) {
             if (process.env.NODE_ENV === "development") {
@@ -148,6 +116,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             console.error("[NextAuth] Error message:", error.message);
             if (process.env.NODE_ENV === "development") {
               console.error("[NextAuth] Error stack:", error.stack);
+            }
+            // Re-throw database connection errors so they can be caught by the route handler
+            if (error.message.includes("DATABASE_URL") || 
+                error.message.includes("connection") ||
+                error.message.includes("connect ECONNREFUSED") ||
+                error.message.includes("P1001")) {
+              throw error;
             }
           }
           return null;
