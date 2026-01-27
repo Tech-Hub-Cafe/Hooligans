@@ -3,8 +3,12 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | Hooligans",
-  description: "Hooligans Terms of Service - Read our terms and conditions for using our services",
+  title: "Terms of Service",
+  description: "Hooligans Terms of Service - Read our terms and conditions for using our online ordering services, website, and cafe services.",
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function TermsOfServicePage() {

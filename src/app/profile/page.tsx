@@ -107,29 +107,29 @@ export default function ProfilePage() {
       <div className="max-w-4xl mx-auto px-4">
         {/* Profile Header */}
         <Card className="shadow-lg border-0 mb-8">
-          <CardContent className="p-8">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 bg-black rounded-full flex items-center justify-center">
+          <CardContent className="p-4 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-4 sm:gap-6">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-black rounded-full flex items-center justify-center flex-shrink-0">
                   {session.user?.image ? (
                     <img
                       src={session.user.image}
                       alt="Profile"
-                      className="w-20 h-20 rounded-full object-cover"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
                     />
                   ) : (
-                    <User className="w-10 h-10 text-teal" />
+                    <User className="w-8 h-8 sm:w-10 sm:h-10 text-teal" />
                   )}
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold">{session.user?.name || "User"}</h1>
-                  <p className="text-gray-500">{session.user?.email}</p>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-xl sm:text-2xl font-bold truncate">{session.user?.name || "User"}</h1>
+                  <p className="text-sm sm:text-base text-gray-500 truncate">{session.user?.email}</p>
                 </div>
               </div>
               <Button
                 variant="outline"
                 onClick={handleSignOut}
-                className="text-red-600 border-red-200 hover:bg-red-50"
+                className="w-full sm:w-auto text-red-600 border-red-200 hover:bg-red-50 active:bg-red-100 touch-manipulation"
               >
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out

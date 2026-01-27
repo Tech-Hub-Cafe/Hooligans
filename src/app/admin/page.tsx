@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart,
@@ -8,8 +8,12 @@ import {
   UtensilsCrossed,
   TrendingUp,
   Clock,
+  Calendar,
+  Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 
 interface Order {
@@ -39,11 +43,18 @@ async function fetchMenuItems(): Promise<MenuItem[]> {
   return res.json();
 }
 
+type DateFilter = "today" | "week" | "month" | "all" | "custom";
+
 export default function AdminDashboard() {
   // Update page title
   useEffect(() => {
     document.title = "Admin Dashboard | Hooligans";
   }, []);
+
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+
   const { data: orders = [] } = useQuery({
     queryKey: ["admin-orders"],
     queryFn: fetchOrders,
@@ -54,13 +65,88 @@ export default function AdminDashboard() {
     queryFn: fetchMenuItems,
   });
 
-  // Calculate stats
-  const totalOrders = orders.length;
-  const totalRevenue = orders.reduce((sum, order) => sum + Number(order.total), 0);
-  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+  // Date filtering logic
+  const getDateRange = (filter: DateFilter): { start: Date; end: Date } | null => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (filter) {
+      case "today":
+        return {
+          start: new Date(today),
+          end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1),
+        };
+      case "week": {
+        const dayOfWeek = today.getDay();
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - dayOfWeek);
+        return {
+          start: new Date(startOfWeek),
+          end: new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1),
+        };
+      }
+      case "month": {
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+        return {
+          start: startOfMonth,
+          end: endOfMonth,
+        };
+      }
+      case "custom":
+        if (startDate && endDate) {
+          return {
+            start: new Date(startDate),
+            end: new Date(new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1),
+          };
+        }
+        return null;
+      case "all":
+      default:
+        return null;
+    }
+  };
+
+  // Filter orders by date range
+  const filteredOrders = useMemo(() => {
+    if (dateFilter === "all") return orders;
+    
+    const range = getDateRange(dateFilter);
+    if (!range) return orders;
+
+    return orders.filter((order) => {
+      const orderDate = new Date(order.created_at);
+      return orderDate >= range.start && orderDate <= range.end;
+    });
+  }, [orders, dateFilter, startDate, endDate]);
+
+  // Calculate stats from filtered orders
+  const totalOrders = filteredOrders.length;
+  const totalRevenue = filteredOrders.reduce((sum, order) => sum + Number(order.total), 0);
+  const pendingOrders = filteredOrders.filter((o) => o.status === "pending").length;
   const availableItems = menuItems.filter((m) => m.available).length;
 
-  const recentOrders = orders.slice(0, 5);
+  const recentOrders = filteredOrders.slice(0, 5);
+
+  // Get filter label
+  const getFilterLabel = (): string => {
+    switch (dateFilter) {
+      case "today":
+        return "Today";
+      case "week":
+        return "This Week";
+      case "month":
+        return "This Month";
+      case "custom":
+        if (startDate && endDate) {
+          return `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`;
+        }
+        return "Custom Range";
+      case "all":
+      default:
+        return "All Time";
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -82,9 +168,99 @@ export default function AdminDashboard() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">Welcome back! Here&apos;s what&apos;s happening today.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          
+          {/* Date Filter */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={dateFilter === "today" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateFilter("today")}
+              className={dateFilter === "today" ? "bg-teal hover:bg-teal-dark text-white" : ""}
+            >
+              Today
+            </Button>
+            <Button
+              variant={dateFilter === "week" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateFilter("week")}
+              className={dateFilter === "week" ? "bg-teal hover:bg-teal-dark text-white" : ""}
+            >
+              This Week
+            </Button>
+            <Button
+              variant={dateFilter === "month" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateFilter("month")}
+              className={dateFilter === "month" ? "bg-teal hover:bg-teal-dark text-white" : ""}
+            >
+              This Month
+            </Button>
+            <Button
+              variant={dateFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateFilter("all")}
+              className={dateFilter === "all" ? "bg-teal hover:bg-teal-dark text-white" : ""}
+            >
+              All Time
+            </Button>
+            <Button
+              variant={dateFilter === "custom" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateFilter("custom")}
+              className={dateFilter === "custom" ? "bg-teal hover:bg-teal-dark text-white" : ""}
+            >
+              <Calendar className="w-4 h-4 mr-2" />
+              Custom
+            </Button>
+          </div>
+        </div>
+        <p className="text-gray-600">Welcome back! Here&apos;s what&apos;s happening {getFilterLabel().toLowerCase()}.</p>
       </div>
+
+      {/* Custom Date Range Inputs */}
+      {dateFilter === "custom" && (
+        <Card className="border-0 shadow-lg mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">From:</label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-auto"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">To:</label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate}
+                  className="w-auto"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active Filter Display */}
+      {dateFilter !== "all" && (
+        <div className="mb-6">
+          <p className="text-sm text-gray-600">
+            Showing data for: <span className="font-semibold text-gray-900">{getFilterLabel()}</span>
+            {filteredOrders.length !== orders.length && (
+              <span className="ml-2 text-teal">
+                ({filteredOrders.length} of {orders.length} orders)
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

@@ -30,6 +30,19 @@ interface OrderingHours {
   friday_drinks_ordering_hours: string | null;
   saturday_drinks_ordering_hours: string | null;
   sunday_drinks_ordering_hours: string | null;
+  monday_combo_ordering_hours: string | null;
+  tuesday_combo_ordering_hours: string | null;
+  wednesday_combo_ordering_hours: string | null;
+  thursday_combo_ordering_hours: string | null;
+  friday_combo_ordering_hours: string | null;
+  saturday_combo_ordering_hours: string | null;
+  sunday_combo_ordering_hours: string | null;
+}
+
+interface CategoryAssignment {
+  id: number;
+  category_name: string;
+  section: "food" | "drinks" | "combo";
 }
 
 interface OrderingAvailability {
@@ -48,6 +61,7 @@ interface OrderingAvailability {
   currentDayHours?: string | null;
 }
 
+
 async function fetchOrderingHours(): Promise<OrderingHours> {
   const res = await fetch("/api/admin/ordering-time");
   if (!res.ok) throw new Error("Failed to fetch ordering hours");
@@ -63,6 +77,19 @@ async function fetchOrderingAvailability(): Promise<OrderingAvailability> {
     food: data.food,
     drinks: data.drinks,
   };
+}
+
+async function fetchCategoryAssignments(): Promise<CategoryAssignment[]> {
+  const res = await fetch("/api/admin/category-assignments");
+  if (!res.ok) throw new Error("Failed to fetch category assignments");
+  return res.json();
+}
+
+async function fetchCategoriesFromSquare(): Promise<string[]> {
+  const res = await fetch("/api/admin/categories-from-square");
+  if (!res.ok) throw new Error("Failed to fetch categories from Square");
+  const data = await res.json();
+  return data.categories || [];
 }
 
 export default function AdminOrderingTimePage() {
@@ -86,6 +113,16 @@ export default function AdminOrderingTimePage() {
     refetchInterval: 60000, // Refetch every minute to update status
   });
 
+  const { data: categoryAssignments = [], refetch: refetchAssignments } = useQuery({
+    queryKey: ["category-assignments"],
+    queryFn: fetchCategoryAssignments,
+  });
+
+  const { data: squareCategories = [] } = useQuery({
+    queryKey: ["square-categories"],
+    queryFn: fetchCategoriesFromSquare,
+  });
+
   // Initialize form data from query data, with fallback defaults
   const defaultFormData: OrderingHours = {
     monday_food_ordering_hours: null,
@@ -102,10 +139,26 @@ export default function AdminOrderingTimePage() {
     friday_drinks_ordering_hours: null,
     saturday_drinks_ordering_hours: null,
     sunday_drinks_ordering_hours: null,
+    monday_combo_ordering_hours: null,
+    tuesday_combo_ordering_hours: null,
+    wednesday_combo_ordering_hours: null,
+    thursday_combo_ordering_hours: null,
+    friday_combo_ordering_hours: null,
+    saturday_combo_ordering_hours: null,
+    sunday_combo_ordering_hours: null,
   };
 
   // Initialize form data only once when hours are first loaded
-  const [formData, setFormData] = useState<OrderingHours>(defaultFormData);
+  const [formData, setFormData] = useState<OrderingHours>({
+    ...defaultFormData,
+    monday_combo_ordering_hours: null,
+    tuesday_combo_ordering_hours: null,
+    wednesday_combo_ordering_hours: null,
+    thursday_combo_ordering_hours: null,
+    friday_combo_ordering_hours: null,
+    saturday_combo_ordering_hours: null,
+    sunday_combo_ordering_hours: null,
+  });
 
   // Update form data when hours are fetched for the first time
   useEffect(() => {
@@ -168,6 +221,7 @@ export default function AdminOrderingTimePage() {
     const allFields = [
       ...allDays.map((d) => `${d.toLowerCase()}_food_ordering_hours`),
       ...allDays.map((d) => `${d.toLowerCase()}_drinks_ordering_hours`),
+      ...allDays.map((d) => `${d.toLowerCase()}_combo_ordering_hours`),
     ] as (keyof OrderingHours)[];
     
     // Build data from scratch using timePickerState, with fallback to formData
@@ -280,6 +334,7 @@ export default function AdminOrderingTimePage() {
       const allFields = [
         ...allDays.map((d) => `${d.toLowerCase()}_food_ordering_hours`),
         ...allDays.map((d) => `${d.toLowerCase()}_drinks_ordering_hours`),
+        ...allDays.map((d) => `${d.toLowerCase()}_combo_ordering_hours`),
       ];
 
       allFields.forEach((field) => {
@@ -495,174 +550,463 @@ export default function AdminOrderingTimePage() {
 
       <form onSubmit={handleSubmit}>
         <Tabs defaultValue="food" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+          <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
             <TabsTrigger value="food">Food Hours</TabsTrigger>
             <TabsTrigger value="drinks">Drinks Hours</TabsTrigger>
+            <TabsTrigger value="combo">Combo Hours</TabsTrigger>
           </TabsList>
 
           {/* Food Ordering Hours */}
           <TabsContent value="food">
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-teal" />
-                  Food Ordering Hours
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {days.map((day) => {
-                    const field = `${day.toLowerCase()}_food_ordering_hours` as keyof OrderingHours;
-                    const timeState = timePickerState[field] || { start: "09:00", end: "17:00", closed: false };
+            <div className="space-y-6">
+              {/* General Food Hours */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-teal" />
+                    General Food Ordering Hours
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {days.map((day) => {
+                      const field = `${day.toLowerCase()}_food_ordering_hours` as keyof OrderingHours;
+                      const timeState = timePickerState[field] || { start: "09:00", end: "17:00", closed: false };
 
-                    return (
-                      <div
-                        key={day}
-                        className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg"
-                      >
-                        <div className="flex items-center justify-between">
-                          <Label className="w-28 font-medium">{day}</Label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`${day}-closed-food`}
-                              checked={timeState.closed}
-                              onChange={(e) => {
-                                updateTimeField(field, timeState.start, timeState.end, e.target.checked);
-                              }}
-                              className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
-                            />
-                            <Label htmlFor={`${day}-closed-food`} className="text-sm font-normal cursor-pointer">
-                              Closed
-                            </Label>
+                      return (
+                        <div
+                          key={day}
+                          className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center justify-between">
+                            <Label className="w-28 font-medium">{day}</Label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`${day}-closed-food`}
+                                checked={timeState.closed}
+                                onChange={(e) => {
+                                  updateTimeField(field, timeState.start, timeState.end, e.target.checked);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                              />
+                              <Label htmlFor={`${day}-closed-food`} className="text-sm font-normal cursor-pointer">
+                                Closed
+                              </Label>
+                            </div>
                           </div>
+                          {!timeState.closed && (
+                            <div className="flex items-center gap-3 ml-28">
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-start-food`} className="text-sm text-gray-600">
+                                  From:
+                                </Label>
+                                <Input
+                                  id={`${day}-start-food`}
+                                  type="time"
+                                  value={timeState.start}
+                                  onChange={(e) => {
+                                    updateTimeField(field, e.target.value, timeState.end, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                              <span className="text-gray-400">-</span>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-end-food`} className="text-sm text-gray-600">
+                                  To:
+                                </Label>
+                                <Input
+                                  id={`${day}-end-food`}
+                                  type="time"
+                                  value={timeState.end}
+                                  onChange={(e) => {
+                                    updateTimeField(field, timeState.start, e.target.value, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {!timeState.closed && (
-                          <div className="flex items-center gap-3 ml-28">
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`${day}-start-food`} className="text-sm text-gray-600">
-                                From:
-                              </Label>
-                              <Input
-                                id={`${day}-start-food`}
-                                type="time"
-                                value={timeState.start}
-                                onChange={(e) => {
-                                  updateTimeField(field, e.target.value, timeState.end, false);
-                                }}
-                                className="w-32"
-                              />
-                            </div>
-                            <span className="text-gray-400">-</span>
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`${day}-end-food`} className="text-sm text-gray-600">
-                                To:
-                              </Label>
-                              <Input
-                                id={`${day}-end-food`}
-                                type="time"
-                                value={timeState.end}
-                                onChange={(e) => {
-                                  updateTimeField(field, timeState.start, e.target.value, false);
-                                }}
-                                className="w-32"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="text-sm text-gray-500 mt-4">
-                  Use the time pickers to set ordering hours. Check &quot;Closed&quot; for days when food ordering is not available.
-                </p>
-              </CardContent>
-            </Card>
+                      );
+                    })}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-4">
+                    Set ordering hours for food items. Categories assigned to Food Hours will use these times.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* Drinks Ordering Hours */}
           <TabsContent value="drinks">
-            <Card className="border-0 shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-teal" />
-                  Drinks Ordering Hours
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {days.map((day) => {
-                    const field = `${day.toLowerCase()}_drinks_ordering_hours` as keyof OrderingHours;
-                    const timeState = timePickerState[field] || { start: "09:00", end: "17:00", closed: false };
+            <div className="space-y-6">
+              {/* General Drinks Hours */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-teal" />
+                    General Drinks Ordering Hours
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {days.map((day) => {
+                      const field = `${day.toLowerCase()}_drinks_ordering_hours` as keyof OrderingHours;
+                      const timeState = timePickerState[field] || { start: "09:00", end: "17:00", closed: false };
 
-                    return (
-                      <div
-                        key={day}
-                        className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg"
-                      >
-                        <div className="flex items-center justify-between">
-                          <Label className="w-28 font-medium">{day}</Label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id={`${day}-closed-drinks`}
-                              checked={timeState.closed}
-                              onChange={(e) => {
-                                updateTimeField(field, timeState.start, timeState.end, e.target.checked);
-                              }}
-                              className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
-                            />
-                            <Label htmlFor={`${day}-closed-drinks`} className="text-sm font-normal cursor-pointer">
-                              Closed
-                            </Label>
+                      return (
+                        <div
+                          key={day}
+                          className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center justify-between">
+                            <Label className="w-28 font-medium">{day}</Label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id={`${day}-closed-drinks`}
+                                checked={timeState.closed}
+                                onChange={(e) => {
+                                  updateTimeField(field, timeState.start, timeState.end, e.target.checked);
+                                }}
+                                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
+                              />
+                              <Label htmlFor={`${day}-closed-drinks`} className="text-sm font-normal cursor-pointer">
+                                Closed
+                              </Label>
+                            </div>
                           </div>
+                          {!timeState.closed && (
+                            <div className="flex items-center gap-3 ml-28">
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-start-drinks`} className="text-sm text-gray-600">
+                                  From:
+                                </Label>
+                                <Input
+                                  id={`${day}-start-drinks`}
+                                  type="time"
+                                  value={timeState.start}
+                                  onChange={(e) => {
+                                    updateTimeField(field, e.target.value, timeState.end, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                              <span className="text-gray-400">-</span>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-end-drinks`} className="text-sm text-gray-600">
+                                  To:
+                                </Label>
+                                <Input
+                                  id={`${day}-end-drinks`}
+                                  type="time"
+                                  value={timeState.end}
+                                  onChange={(e) => {
+                                    updateTimeField(field, timeState.start, e.target.value, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {!timeState.closed && (
-                          <div className="flex items-center gap-3 ml-28">
+                      );
+                    })}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-4">
+                    Set ordering hours for drinks items. Categories assigned to Drinks Hours will use these times.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Combo Ordering Hours */}
+          <TabsContent value="combo">
+            <div className="space-y-6">
+              {/* General Combo Hours */}
+              <Card className="border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-teal" />
+                    General Combo Ordering Hours
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {days.map((day) => {
+                      const field = `${day.toLowerCase()}_combo_ordering_hours` as keyof OrderingHours;
+                      const timeState = timePickerState[field] || { start: "09:00", end: "17:00", closed: false };
+
+                      return (
+                        <div
+                          key={day}
+                          className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center justify-between">
+                            <Label className="w-28 font-medium">{day}</Label>
                             <div className="flex items-center gap-2">
-                              <Label htmlFor={`${day}-start-drinks`} className="text-sm text-gray-600">
-                                From:
-                              </Label>
-                              <Input
-                                id={`${day}-start-drinks`}
-                                type="time"
-                                value={timeState.start}
+                              <input
+                                type="checkbox"
+                                id={`${day}-closed-combo`}
+                                checked={timeState.closed}
                                 onChange={(e) => {
-                                  updateTimeField(field, e.target.value, timeState.end, false);
+                                  updateTimeField(field, timeState.start, timeState.end, e.target.checked);
                                 }}
-                                className="w-32"
+                                className="w-4 h-4 rounded border-gray-300 text-teal focus:ring-teal"
                               />
-                            </div>
-                            <span className="text-gray-400">-</span>
-                            <div className="flex items-center gap-2">
-                              <Label htmlFor={`${day}-end-drinks`} className="text-sm text-gray-600">
-                                To:
+                              <Label htmlFor={`${day}-closed-combo`} className="text-sm font-normal cursor-pointer">
+                                Closed
                               </Label>
-                              <Input
-                                id={`${day}-end-drinks`}
-                                type="time"
-                                value={timeState.end}
-                                onChange={(e) => {
-                                  updateTimeField(field, timeState.start, e.target.value, false);
-                                }}
-                                className="w-32"
-                              />
                             </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="text-sm text-gray-500 mt-4">
-                  Use the time pickers to set ordering hours. Check &quot;Closed&quot; for days when drinks ordering is not available.
-                </p>
-              </CardContent>
-            </Card>
+                          {!timeState.closed && (
+                            <div className="flex items-center gap-3 ml-28">
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-start-combo`} className="text-sm text-gray-600">
+                                  From:
+                                </Label>
+                                <Input
+                                  id={`${day}-start-combo`}
+                                  type="time"
+                                  value={timeState.start}
+                                  onChange={(e) => {
+                                    updateTimeField(field, e.target.value, timeState.end, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                              <span className="text-gray-400">-</span>
+                              <div className="flex items-center gap-2">
+                                <Label htmlFor={`${day}-end-combo`} className="text-sm text-gray-600">
+                                  To:
+                                </Label>
+                                <Input
+                                  id={`${day}-end-combo`}
+                                  type="time"
+                                  value={timeState.end}
+                                  onChange={(e) => {
+                                    updateTimeField(field, timeState.start, e.target.value, false);
+                                  }}
+                                  className="w-32"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-4">
+                    Set ordering hours for combo items. Categories assigned to Combo Hours will use these times.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </form>
+
+      {/* Category Assignment Section */}
+      <CategoryAssignmentSection
+        squareCategories={squareCategories}
+        categoryAssignments={categoryAssignments}
+        onRefresh={refetchAssignments}
+      />
     </div>
+  );
+}
+
+// Category Assignment Section Component
+function CategoryAssignmentSection({
+  squareCategories,
+  categoryAssignments,
+  onRefresh,
+}: {
+  squareCategories: string[];
+  categoryAssignments: CategoryAssignment[];
+  onRefresh: () => void;
+}) {
+  const [localAssignments, setLocalAssignments] = useState<Map<string, "food" | "drinks" | "combo" | "unassigned">>(new Map());
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+
+  // Initialize local assignments from fetched data
+  useEffect(() => {
+    const assignmentsMap = new Map<string, "food" | "drinks" | "combo" | "unassigned">();
+    categoryAssignments.forEach((assignment) => {
+      assignmentsMap.set(assignment.category_name, assignment.section);
+    });
+    setLocalAssignments(assignmentsMap);
+  }, [categoryAssignments]);
+
+  const handleAssignmentChange = (categoryName: string, section: "food" | "drinks" | "combo" | "unassigned") => {
+    const newAssignments = new Map(localAssignments);
+    if (section === "unassigned") {
+      newAssignments.delete(categoryName);
+    } else {
+      newAssignments.set(categoryName, section);
+    }
+    setLocalAssignments(newAssignments);
+
+    // Debounce save
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    const timeout = setTimeout(() => {
+      handleSaveAssignments(newAssignments);
+    }, 1000);
+    setSaveTimeout(timeout);
+  };
+
+  const handleSaveAssignments = async (assignments?: Map<string, "food" | "drinks" | "combo" | "unassigned">) => {
+    const assignmentsToSave = assignments || localAssignments;
+    setIsSaving(true);
+
+    try {
+      const assignmentsArray = Array.from(assignmentsToSave.entries())
+        .filter(([_, section]) => section !== "unassigned")
+        .map(([category_name, section]) => ({
+          category_name,
+          section: section as "food" | "drinks" | "combo",
+        }));
+
+      const res = await fetch("/api/admin/category-assignments", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments: assignmentsArray }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save category assignments");
+      }
+
+      onRefresh();
+    } catch (error: any) {
+      alert(error.message || "Failed to save category assignments");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [saveTimeout]);
+
+  // Create assignment map for quick lookup
+  const assignmentMap = new Map<string, "food" | "drinks" | "combo">();
+  categoryAssignments.forEach((assignment) => {
+    assignmentMap.set(assignment.category_name, assignment.section);
+  });
+
+  // Count categories by section
+  const foodCount = Array.from(localAssignments.values()).filter((s) => s === "food").length;
+  const drinksCount = Array.from(localAssignments.values()).filter((s) => s === "drinks").length;
+  const comboCount = Array.from(localAssignments.values()).filter((s) => s === "combo").length;
+  const unassignedCount = squareCategories.length - foodCount - drinksCount - comboCount;
+
+  return (
+    <Card className="border-0 shadow-lg mt-6">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-teal" />
+            Category Assignment
+          </CardTitle>
+          {isSaving && (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Saving...
+            </div>
+          )}
+        </div>
+        <p className="text-sm text-gray-500 mt-2">
+          Assign categories from Square POS to Food Hours, Drinks Hours, or Combo Hours. Unassigned categories default to Drinks Hours.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">{foodCount}</div>
+            <div className="text-sm text-gray-600">Food Hours</div>
+          </div>
+          <div className="p-3 bg-green-50 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">{drinksCount}</div>
+            <div className="text-sm text-gray-600">Drinks Hours</div>
+          </div>
+          <div className="p-3 bg-purple-50 rounded-lg">
+            <div className="text-2xl font-bold text-purple-600">{comboCount}</div>
+            <div className="text-sm text-gray-600">Combo Hours</div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="text-2xl font-bold text-gray-600">{unassignedCount}</div>
+            <div className="text-sm text-gray-600">Unassigned</div>
+          </div>
+        </div>
+
+        {/* Category List */}
+        {squareCategories.length === 0 ? (
+          <p className="text-gray-500 text-center py-8">
+            No categories found from Square POS. Make sure Square is configured and categories exist.
+          </p>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {squareCategories.map((category) => {
+              const currentAssignment = localAssignments.get(category) || "unassigned";
+              
+              return (
+                <div
+                  key={category}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <span className="font-medium">{category}</span>
+                  <select
+                    value={currentAssignment}
+                    onChange={(e) => {
+                      handleAssignmentChange(category, e.target.value as "food" | "drinks" | "combo" | "unassigned");
+                    }}
+                    className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal focus:border-teal"
+                  >
+                    <option value="unassigned">Unassigned (Default: Drinks)</option>
+                    <option value="food">Food Hours</option>
+                    <option value="drinks">Drinks Hours</option>
+                    <option value="combo">Combo Hours</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <Button
+            onClick={() => handleSaveAssignments()}
+            disabled={isSaving}
+            className="bg-teal hover:bg-teal-dark text-white"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Assignments
+              </>
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

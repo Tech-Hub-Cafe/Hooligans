@@ -21,7 +21,7 @@ export async function GET() {
       });
     }
 
-    // Return both food and drinks ordering hours
+    // Return food, drinks, and combo ordering hours
     return NextResponse.json({
       monday_food_ordering_hours: settings.monday_food_ordering_hours,
       tuesday_food_ordering_hours: settings.tuesday_food_ordering_hours,
@@ -37,6 +37,13 @@ export async function GET() {
       friday_drinks_ordering_hours: settings.friday_drinks_ordering_hours,
       saturday_drinks_ordering_hours: settings.saturday_drinks_ordering_hours,
       sunday_drinks_ordering_hours: settings.sunday_drinks_ordering_hours,
+      monday_combo_ordering_hours: settings.monday_combo_ordering_hours,
+      tuesday_combo_ordering_hours: settings.tuesday_combo_ordering_hours,
+      wednesday_combo_ordering_hours: settings.wednesday_combo_ordering_hours,
+      thursday_combo_ordering_hours: settings.thursday_combo_ordering_hours,
+      friday_combo_ordering_hours: settings.friday_combo_ordering_hours,
+      saturday_combo_ordering_hours: settings.saturday_combo_ordering_hours,
+      sunday_combo_ordering_hours: settings.sunday_combo_ordering_hours,
     });
   } catch (error) {
     console.error("Error fetching ordering hours:", error);
@@ -73,6 +80,13 @@ export async function PUT(request: Request) {
       friday_drinks_ordering_hours,
       saturday_drinks_ordering_hours,
       sunday_drinks_ordering_hours,
+      monday_combo_ordering_hours,
+      tuesday_combo_ordering_hours,
+      wednesday_combo_ordering_hours,
+      thursday_combo_ordering_hours,
+      friday_combo_ordering_hours,
+      saturday_combo_ordering_hours,
+      sunday_combo_ordering_hours,
     } = body;
 
     // Helper to normalize values: empty string, undefined, or null becomes null, "Closed" stays as "Closed"
@@ -112,6 +126,13 @@ export async function PUT(request: Request) {
       friday_drinks_ordering_hours: normalizeValue(friday_drinks_ordering_hours),
       saturday_drinks_ordering_hours: normalizeValue(saturday_drinks_ordering_hours),
       sunday_drinks_ordering_hours: normalizeValue(sunday_drinks_ordering_hours),
+      monday_combo_ordering_hours: normalizeValue(monday_combo_ordering_hours),
+      tuesday_combo_ordering_hours: normalizeValue(tuesday_combo_ordering_hours),
+      wednesday_combo_ordering_hours: normalizeValue(wednesday_combo_ordering_hours),
+      thursday_combo_ordering_hours: normalizeValue(thursday_combo_ordering_hours),
+      friday_combo_ordering_hours: normalizeValue(friday_combo_ordering_hours),
+      saturday_combo_ordering_hours: normalizeValue(saturday_combo_ordering_hours),
+      sunday_combo_ordering_hours: normalizeValue(sunday_combo_ordering_hours),
     };
 
     console.log("[AdminOrderingTime API] Updating with data:", JSON.stringify(updateData, null, 2));
@@ -139,6 +160,13 @@ export async function PUT(request: Request) {
       friday_drinks_ordering_hours: settings.friday_drinks_ordering_hours,
       saturday_drinks_ordering_hours: settings.saturday_drinks_ordering_hours,
       sunday_drinks_ordering_hours: settings.sunday_drinks_ordering_hours,
+      monday_combo_ordering_hours: settings.monday_combo_ordering_hours,
+      tuesday_combo_ordering_hours: settings.tuesday_combo_ordering_hours,
+      wednesday_combo_ordering_hours: settings.wednesday_combo_ordering_hours,
+      thursday_combo_ordering_hours: settings.thursday_combo_ordering_hours,
+      friday_combo_ordering_hours: settings.friday_combo_ordering_hours,
+      saturday_combo_ordering_hours: settings.saturday_combo_ordering_hours,
+      sunday_combo_ordering_hours: settings.sunday_combo_ordering_hours,
     });
   } catch (error) {
     console.error("Error updating ordering hours:", error);

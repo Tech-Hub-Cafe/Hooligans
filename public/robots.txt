@@ -1,0 +1,12 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /profile/
+Disallow: /orders/
+Disallow: /cart/
+
+# Sitemap
+Sitemap: https://hooligans.com.au/sitemap.xml

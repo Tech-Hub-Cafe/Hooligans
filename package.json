@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "dev:https": "next dev --experimental-https",
-    "build": "prisma generate && next build",
+    "build": "vercel build",
+    "build:local": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "generate-icons": "node scripts/generate-icons.js",

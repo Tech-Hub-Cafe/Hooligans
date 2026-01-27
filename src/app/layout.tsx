@@ -14,8 +14,16 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Hooligans | Artisan Coffee & Cuisine",
-  description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "https://hooligans.com.au"),
+  title: {
+    default: "Hooligans | Artisan Coffee & Cuisine",
+    template: "%s | Hooligans",
+  },
+  description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere. Order online for pickup or delivery. Fresh food, great coffee, exceptional service.",
+  keywords: ["coffee", "cafe", "restaurant", "food delivery", "online ordering", "artisan coffee", "cuisine", "Hooligans", "cafe Australia"],
+  authors: [{ name: "Hooligans" }],
+  creator: "Hooligans",
+  publisher: "Hooligans",
   manifest: "/manifest.json",
   icons: {
     icon: "/logo/Hooligans-Hero-Logo-2.png",
@@ -31,9 +39,42 @@ export const metadata: Metadata = {
     telephone: true,
   },
   openGraph: {
-    title: "Hooligans",
-    description: "Experience artisanal coffee and handcrafted cuisine",
     type: "website",
+    locale: "en_AU",
+    url: "/",
+    siteName: "Hooligans",
+    title: "Hooligans | Artisan Coffee & Cuisine",
+    description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere. Order online for pickup or delivery.",
+    images: [
+      {
+        url: "/logo/Hooligans-Hero-Logo-2.png",
+        width: 1200,
+        height: 630,
+        alt: "Hooligans - Artisan Coffee & Cuisine",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Hooligans | Artisan Coffee & Cuisine",
+    description: "Experience artisanal coffee and handcrafted cuisine. Order online for pickup or delivery.",
+    images: ["/logo/Hooligans-Hero-Logo-2.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  verification: {
+    // Add your verification codes here when available
+    // google: "your-google-verification-code",
+    // yandex: "your-yandex-verification-code",
   },
 };
 

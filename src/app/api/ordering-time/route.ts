@@ -53,6 +53,13 @@ export async function GET(request: Request) {
       friday_drinks_ordering_hours: settings.friday_drinks_ordering_hours,
       saturday_drinks_ordering_hours: settings.saturday_drinks_ordering_hours,
       sunday_drinks_ordering_hours: settings.sunday_drinks_ordering_hours,
+      monday_combo_ordering_hours: settings.monday_combo_ordering_hours,
+      tuesday_combo_ordering_hours: settings.tuesday_combo_ordering_hours,
+      wednesday_combo_ordering_hours: settings.wednesday_combo_ordering_hours,
+      thursday_combo_ordering_hours: settings.thursday_combo_ordering_hours,
+      friday_combo_ordering_hours: settings.friday_combo_ordering_hours,
+      saturday_combo_ordering_hours: settings.saturday_combo_ordering_hours,
+      sunday_combo_ordering_hours: settings.sunday_combo_ordering_hours,
     };
 
     const timezone = settings.timezone || "Australia/Sydney";

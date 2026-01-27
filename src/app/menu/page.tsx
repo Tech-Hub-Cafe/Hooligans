@@ -545,14 +545,15 @@ export default function MenuPage() {
           {/* Category Pills */}
           <div 
             ref={categoryPillsRef}
-            className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide"
+            className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {categories.map((cat) => (
               <button
                 key={cat.id}
                 data-category-pill={cat.id}
                 onClick={() => scrollToCategory(cat.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-all duration-200 ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-all duration-200 flex-shrink-0 ${
                   visibleCategory === cat.id
                     ? "bg-black text-white scale-105"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -567,7 +568,7 @@ export default function MenuPage() {
       </div>
 
       {/* Menu Content */}
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto px-4 py-6 overflow-x-hidden">
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
             <Loader2 className="w-10 h-10 animate-spin text-teal" />
@@ -597,17 +598,17 @@ export default function MenuPage() {
                     return (
                       <div
                         key={item.id}
-                        className="flex gap-4 p-4 bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all"
+                        className="flex flex-row gap-4 p-4 bg-white rounded-2xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all overflow-visible"
                       >
                         {/* Item Image */}
-                        <div className="relative w-28 h-28 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100">
+                        <div className="relative w-24 md:w-28 h-24 md:h-28 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100">
                           {item.image_url ? (
                             <Image
                               src={item.image_url}
                               alt={item.name}
                               fill
                               className="object-cover"
-                              sizes="112px"
+                              sizes="(max-width: 768px) 96px, 112px"
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-gray-100">
@@ -617,38 +618,85 @@ export default function MenuPage() {
                         </div>
 
                         {/* Item Details */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-lg">{item.name}</h3>
-                            {item.modifierLists && item.modifierLists.length > 0 && (
-                              <span className="text-xs bg-teal/10 text-teal px-2 py-0.5 rounded-full font-medium">
-                                Customizable
-                              </span>
-                            )}
+                        <div className="flex-1 min-w-0 w-full relative md:relative">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-semibold text-lg">{item.name}</h3>
+                                {item.modifierLists && item.modifierLists.length > 0 && (
+                                  <span className="text-xs bg-teal/10 text-teal px-2 py-0.5 rounded-full font-medium">
+                                    Customizable
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-gray-500 text-sm mt-1 line-clamp-2">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                            {/* Customize/Add Button - Mobile view */}
+                            <div className="flex items-start md:hidden">
+                              <Button
+                                onClick={() => {
+                                  if (openModifierItemId === item.id) {
+                                    setOpenModifierItemId(null);
+                                  } else {
+                                    setOpenModifierItemId(item.id);
+                                  }
+                                }}
+                                disabled={!item.available}
+                                className={`rounded-full w-10 h-10 p-0 transition-all flex-shrink-0 ${
+                                  openModifierItemId === item.id
+                                    ? "bg-teal-dark text-white"
+                                    : "bg-teal hover:bg-teal-dark text-white"
+                                } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+                                title={!item.available ? "This item is unavailable" : "Customize & Add"}
+                              >
+                                <Plus className="w-5 h-5" />
+                              </Button>
+                            </div>
                           </div>
-                          {item.description && (
-                            <p className="text-gray-500 text-sm mt-1 line-clamp-2">
-                              {item.description}
+                          <div className="flex items-center justify-between mt-2">
+                            <p className="text-teal font-bold text-lg">
+                              ${item.price.toFixed(2)}
                             </p>
-                          )}
-                          <p className="text-teal font-bold text-lg mt-2">
-                            ${item.price.toFixed(2)}
-                          </p>
+                            {/* Customize/Add Button - Desktop/Tablet view */}
+                            <div className="hidden md:flex items-end">
+                              <Button
+                                onClick={() => {
+                                  if (openModifierItemId === item.id) {
+                                    setOpenModifierItemId(null);
+                                  } else {
+                                    setOpenModifierItemId(item.id);
+                                  }
+                                }}
+                                disabled={!item.available}
+                                className={`rounded-full w-10 h-10 p-0 transition-all ${
+                                  openModifierItemId === item.id
+                                    ? "bg-teal-dark text-white"
+                                    : "bg-teal hover:bg-teal-dark text-white"
+                                } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+                                title={!item.available ? "This item is unavailable" : "Customize & Add"}
+                              >
+                                <Plus className="w-5 h-5" />
+                              </Button>
+                            </div>
+                          </div>
                           
-                          {/* Modifier Selector - Only show when opened */}
+                          {/* Modifier Selector - Full width on mobile only */}
                           {openModifierItemId === item.id && (
-                            <div className="mt-3">
+                            <div className="mt-4 w-[calc(100%+2rem)] md:w-full -ml-4 md:ml-0 px-4 md:px-0">
                               {item.modifierLists && item.modifierLists.length > 0 ? (
                                 <ModifierSelector
                                   item={item}
                                   onModifiersChange={(modifiers, comment) => handleModifiersChange(item.id, modifiers, comment)}
                                   onAddToCart={() => {
                                     handleAddToCartClick(item);
-                                    setOpenModifierItemId(null); // Close after adding
+                                    setOpenModifierItemId(null);
                                   }}
                                 />
                               ) : (
-                                // For items without modifiers, show simple add button
                                 <div className="mt-3 pt-3 border-t">
                                   <Button
                                     onClick={() => {
@@ -679,28 +727,6 @@ export default function MenuPage() {
                               </Button>
                             </div>
                           )}
-                        </div>
-
-                        {/* Customize/Add Button */}
-                        <div className="flex items-end">
-                          <Button
-                            onClick={() => {
-                              if (openModifierItemId === item.id) {
-                                setOpenModifierItemId(null); // Close if already open
-                              } else {
-                                setOpenModifierItemId(item.id); // Open this item's modifiers
-                              }
-                            }}
-                            disabled={!item.available}
-                            className={`rounded-full w-10 h-10 p-0 transition-all ${
-                              openModifierItemId === item.id
-                                ? "bg-teal-dark text-white"
-                                : "bg-teal hover:bg-teal-dark text-white"
-                            } disabled:bg-gray-300 disabled:cursor-not-allowed`}
-                            title={!item.available ? "This item is unavailable" : "Customize & Add"}
-                          >
-                            <Plus className="w-5 h-5" />
-                          </Button>
                         </div>
                       </div>
                     );

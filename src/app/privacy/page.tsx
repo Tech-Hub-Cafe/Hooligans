@@ -3,8 +3,12 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Hooligans",
-  description: "Hooligans Privacy Policy - Learn how we collect, use, and protect your information",
+  title: "Privacy Policy",
+  description: "Hooligans Privacy Policy - Learn how we collect, use, and protect your personal information when you use our website and services.",
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function PrivacyPolicyPage() {

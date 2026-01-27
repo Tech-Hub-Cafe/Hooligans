@@ -299,3 +299,162 @@ function generateConfirmationHTML({
     </html>
   `;
 }
+
+export async function sendContactConfirmation({
+  to,
+  name,
+}: {
+  to: string;
+  name: string;
+}) {
+  if (!transporter) {
+    console.warn('[Email] SMTP not configured, skipping contact confirmation email');
+    return null;
+  }
+
+  try {
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@hooligans.com.au';
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: to,
+      subject: 'Thank you for contacting Hooligans',
+      html: generateContactConfirmationHTML({ name }),
+    });
+
+    console.log('[Email] Contact confirmation sent successfully:', info.messageId);
+    return { id: info.messageId, messageId: info.messageId };
+  } catch (error) {
+    console.error('[Email] Failed to send contact confirmation:', error);
+    throw error;
+  }
+}
+
+export async function sendContactNotification({
+  to,
+  name,
+  email,
+  subject,
+  message,
+}: {
+  to: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) {
+  if (!transporter) {
+    console.warn('[Email] SMTP not configured, skipping contact notification email');
+    return null;
+  }
+
+  try {
+    const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@hooligans.com.au';
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: to,
+      subject: `New Contact Form Message: ${subject}`,
+      html: generateContactNotificationHTML({ name, email, subject, message }),
+      replyTo: email,
+    });
+
+    console.log('[Email] Contact notification sent successfully:', info.messageId);
+    return { id: info.messageId, messageId: info.messageId };
+  } catch (error) {
+    console.error('[Email] Failed to send contact notification:', error);
+    throw error;
+  }
+}
+
+// Helper function to generate contact confirmation HTML
+function generateContactConfirmationHTML({
+  name,
+}: {
+  name: string;
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #14b8a6; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">Thank You for Contacting Us</h1>
+        </div>
+        
+        <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+          <p style="font-size: 16px; margin-bottom: 24px;">Hi ${name},</p>
+          <p style="font-size: 16px; margin-bottom: 24px;">Thank you for reaching out to Hooligans! We've received your message and will get back to you as soon as possible.</p>
+          
+          <p style="font-size: 16px; margin-bottom: 24px;">We typically respond within 24 hours during business hours.</p>
+          
+          <p style="margin-top: 32px; font-size: 14px; color: #666;">
+            Thanks for choosing Hooligans!
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #999;">
+          <p>Hooligans - Fresh food, great coffee</p>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+// Helper function to generate contact notification HTML
+function generateContactNotificationHTML({
+  name,
+  email,
+  subject,
+  message,
+}: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) {
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: #14b8a6; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h1 style="margin: 0; font-size: 28px;">New Contact Form Message</h1>
+        </div>
+        
+        <div style="background: white; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+          <div style="margin-bottom: 24px;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 4px 0;"><strong>From:</strong></p>
+            <p style="font-size: 16px; margin: 0;">${name} &lt;${email}&gt;</p>
+          </div>
+          
+          <div style="margin-bottom: 24px;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 4px 0;"><strong>Subject:</strong></p>
+            <p style="font-size: 16px; margin: 0;">${subject}</p>
+          </div>
+          
+          <div style="margin-bottom: 24px;">
+            <p style="font-size: 14px; color: #666; margin: 0 0 8px 0;"><strong>Message:</strong></p>
+            <div style="background: #f3f4f6; padding: 16px; border-radius: 6px; white-space: pre-wrap; font-size: 15px;">
+${message}
+            </div>
+          </div>
+          
+          <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 14px; color: #666; margin: 0;">
+              You can reply directly to this email to respond to ${name}.
+            </p>
+          </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 24px; font-size: 12px; color: #999;">
+          <p>Hooligans - Fresh food, great coffee</p>
+        </div>
+      </body>
+    </html>
+  `;
+}

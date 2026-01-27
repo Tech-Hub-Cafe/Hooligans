@@ -13,12 +13,14 @@ import {
   ArrowLeft,
   Loader2,
   LogOut,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const adminNavItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
+  { href: "/admin/contact-messages", label: "Contact Messages", icon: Mail },
   { href: "/admin/menu", label: "Menu Items", icon: UtensilsCrossed },
   { href: "/admin/ordering-time", label: "Ordering Time", icon: Clock },
   { href: "/admin/settings", label: "Settings", icon: Settings },

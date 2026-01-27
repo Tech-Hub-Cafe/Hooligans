@@ -88,6 +88,13 @@ model CafeSettings {
   friday_drinks_ordering_hours    String?   @db.VarChar(100)
   saturday_drinks_ordering_hours  String?   @db.VarChar(100)
   sunday_drinks_ordering_hours    String?   @db.VarChar(100)
+  monday_combo_ordering_hours     String?   @db.VarChar(100)
+  tuesday_combo_ordering_hours    String?   @db.VarChar(100)
+  wednesday_combo_ordering_hours  String?   @db.VarChar(100)
+  thursday_combo_ordering_hours   String?   @db.VarChar(100)
+  friday_combo_ordering_hours     String?   @db.VarChar(100)
+  saturday_combo_ordering_hours   String?   @db.VarChar(100)
+  sunday_combo_ordering_hours     String?   @db.VarChar(100)
   facebook_url                    String?   @db.VarChar(500)
   instagram_url                   String?   @db.VarChar(500)
   twitter_url                     String?   @db.VarChar(500)
@@ -129,4 +136,31 @@ model PasswordResetToken {
   @@index([user_id])
   @@index([expires_at])
   @@map("password_reset_tokens")
+}
+
+model ContactMessage {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  email      String   @db.VarChar(255)
+  subject    String   @db.VarChar(255)
+  message    String   @db.Text
+  read       Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+
+  @@index([email])
+  @@index([read])
+  @@index([created_at])
+  @@map("contact_messages")
+}
+
+model CategoryOrderingAssignment {
+  id            Int       @id @default(autoincrement())
+  category_name String   @unique @db.VarChar(255)
+  section       String   @db.VarChar(50) // "food" | "drinks" | "combo"
+  created_at    DateTime  @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @updatedAt @db.Timestamp(6)
+
+  @@index([category_name])
+  @@index([section])
+  @@map("category_ordering_assignments")
 }

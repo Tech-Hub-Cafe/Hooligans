@@ -3,8 +3,18 @@ import { Users, Heart, Leaf } from "lucide-react";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "About Us | Hooligans",
-  description: "Learn about Hooligans - our story, values, and commitment to exceptional coffee and community",
+  title: "About Us",
+  description: "Learn about Hooligans - our story, values, and commitment to exceptional coffee and community. Discover what makes us special and why we're passionate about artisan coffee and handcrafted cuisine.",
+  openGraph: {
+    title: "About Us | Hooligans",
+    description: "Learn about Hooligans - our story, values, and commitment to exceptional coffee and community.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "About Us | Hooligans",
+    description: "Learn about Hooligans - our story, values, and commitment to exceptional coffee and community.",
+  },
 };
 
 export default function AboutPage() {

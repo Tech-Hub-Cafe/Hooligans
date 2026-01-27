@@ -125,15 +125,32 @@ export async function POST(request: Request) {
         sunday_drinks_ordering_hours: settings.sunday_drinks_ordering_hours,
       };
 
+      // Fetch category assignments
+      const categoryAssignments = await prisma.categoryOrderingAssignment.findMany().catch(() => []);
+      
+      // Create a map of category to section assignment
+      const categorySectionMap = new Map<string, "food" | "drinks" | "combo">();
+      categoryAssignments.forEach((assignment) => {
+        categorySectionMap.set(assignment.category_name.toLowerCase(), assignment.section as "food" | "drinks" | "combo");
+      });
+
       // Validate each item against its appropriate ordering hours
       const unavailableItems: string[] = [];
       for (const item of items) {
         const category = item.category || "";
-        const itemType = getItemTypeFromCategory(category);
-        const availability = checkOrderingAvailabilityByType(orderingHours, itemType);
+        const categoryLower = category.toLowerCase();
+        
+        // Determine section from category assignment, default to "drinks" if not assigned
+        const section = categorySectionMap.get(categoryLower) || "drinks";
+        
+        const availability = checkOrderingAvailabilityByType(
+          orderingHours,
+          section,
+          settings.timezone
+        );
         
         if (!availability.isAvailable) {
-          unavailableItems.push(`${item.name} (${itemType})`);
+          unavailableItems.push(`${item.name} (${section}${category ? ` - ${category}` : ""})`);
         }
       }
 

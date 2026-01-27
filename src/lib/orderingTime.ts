@@ -103,32 +103,32 @@ function parseTimeRange(rangeStr: string | null | undefined): TimeRange | null {
 }
 
 /**
- * Get the ordering hours for a specific day of the week and item type
+ * Get the ordering hours for a specific day of the week and section
  * @param dayOfWeek 0 = Sunday, 1 = Monday, ..., 6 = Saturday
- * @param itemType "food" or "drinks"
+ * @param section "food" | "drinks" | "combo"
  */
 function getOrderingHoursForDay(
   hours: OrderingHours,
   dayOfWeek: number,
-  itemType: "food" | "drinks" = "food"
+  section: "food" | "drinks" | "combo" = "food"
 ): string | null {
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const dayName = dayNames[dayOfWeek];
-  const fieldName = `${dayName}_${itemType}_ordering_hours` as keyof OrderingHours;
+  const fieldName = `${dayName}_${section}_ordering_hours` as keyof OrderingHours;
   return hours[fieldName] || null;
 }
 
 /**
- * Check if ordering is currently available based on ordering hours for a specific item type
+ * Check if ordering is currently available based on ordering hours for a specific section
  * @param hours Ordering hours object
- * @param itemType "food" or "drinks"
+ * @param section "food" | "drinks" | "combo"
  * @param timezone The timezone of the business (default: "Australia/Sydney")
  * @param currentTime Optional current date/time to check against (defaults to now)
  * @returns Object with availability status and message
  */
 export function checkOrderingAvailabilityByType(
   hours: OrderingHours,
-  itemType: "food" | "drinks",
+  section: "food" | "drinks" | "combo",
   timezone: string = "Australia/Sydney",
   currentTime?: Date
 ): { isAvailable: boolean; message: string; currentDayHours: string | null } {
@@ -143,7 +143,7 @@ export function checkOrderingAvailabilityByType(
   const currentMins = getMinutes(zonedDate);
   const currentMinutes = currentHours * 60 + currentMins;
 
-  const dayHours = getOrderingHoursForDay(hours, dayOfWeek, itemType);
+  const dayHours = getOrderingHoursForDay(hours, dayOfWeek, section);
   const timeRange = parseTimeRange(dayHours);
 
   if (!timeRange) {
@@ -156,10 +156,10 @@ export function checkOrderingAvailabilityByType(
       "Friday",
       "Saturday",
     ];
-    const itemTypeLabel = itemType === "drinks" ? "drinks" : "food";
+    const sectionLabel = section === "drinks" ? "drinks" : section === "combo" ? "combo" : "food";
     return {
       isAvailable: false,
-      message: `${itemTypeLabel.charAt(0).toUpperCase() + itemTypeLabel.slice(1)} ordering is closed on ${dayNames[dayOfWeek]}.`,
+      message: `${sectionLabel.charAt(0).toUpperCase() + sectionLabel.slice(1)} ordering is closed on ${dayNames[dayOfWeek]}.`,
       currentDayHours: dayHours,
     };
   }
@@ -201,19 +201,19 @@ export function checkOrderingAvailabilityByType(
     if (typeof timeRange.start !== "number" || isNaN(timeRange.start) ||
       typeof timeRange.end !== "number" || isNaN(timeRange.end)) {
       console.error(`[OrderingTime] Invalid time range:`, timeRange, `for hours:`, dayHours);
-      const itemTypeLabel = itemType === "drinks" ? "drinks" : "food";
+      const sectionLabel = section === "drinks" ? "drinks" : section === "combo" ? "combo" : "food";
       return {
         isAvailable: false,
-        message: `${itemTypeLabel.charAt(0).toUpperCase() + itemTypeLabel.slice(1)} ordering is currently closed.`,
+        message: `${sectionLabel.charAt(0).toUpperCase() + sectionLabel.slice(1)} ordering is currently closed.`,
         currentDayHours: dayHours,
       };
     }
 
     const hoursDisplay = `${formatMinutes(timeRange.start)} - ${formatMinutes(timeRange.end)}`;
-    const itemTypeLabel = itemType === "drinks" ? "drinks" : "food";
+    const sectionLabel = section === "drinks" ? "drinks" : section === "combo" ? "combo" : "food";
     return {
       isAvailable: false,
-      message: `${itemTypeLabel.charAt(0).toUpperCase() + itemTypeLabel.slice(1)} ordering is currently closed. Ordering hours: ${hoursDisplay}`,
+      message: `${sectionLabel.charAt(0).toUpperCase() + sectionLabel.slice(1)} ordering is currently closed. Ordering hours: ${hoursDisplay}`,
       currentDayHours: dayHours,
     };
   }
@@ -232,6 +232,27 @@ export function checkOrderingAvailability(
   currentTime?: Date
 ): { isAvailable: boolean; message: string; currentDayHours: string | null } {
   return checkOrderingAvailabilityByType(hours, "food", timezone, currentTime);
+}
+
+/**
+ * Get ordering hours display for a specific section
+ */
+export function getOrderingHoursDisplayBySection(
+  hours: OrderingHours,
+  section: "food" | "drinks" | "combo" = "food"
+): {
+  [key: string]: string;
+} {
+  const suffix = section === "drinks" ? "_drinks_ordering_hours" : section === "combo" ? "_combo_ordering_hours" : "_food_ordering_hours";
+  return {
+    Monday: hours[`monday${suffix}` as keyof OrderingHours] || "Closed",
+    Tuesday: hours[`tuesday${suffix}` as keyof OrderingHours] || "Closed",
+    Wednesday: hours[`wednesday${suffix}` as keyof OrderingHours] || "Closed",
+    Thursday: hours[`thursday${suffix}` as keyof OrderingHours] || "Closed",
+    Friday: hours[`friday${suffix}` as keyof OrderingHours] || "Closed",
+    Saturday: hours[`saturday${suffix}` as keyof OrderingHours] || "Closed",
+    Sunday: hours[`sunday${suffix}` as keyof OrderingHours] || "Closed",
+  };
 }
 
 /**

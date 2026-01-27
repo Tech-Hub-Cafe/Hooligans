@@ -110,10 +110,10 @@ export default function ModifierSelector({
   };
 
   return (
-    <div className="mt-3 border-t pt-3">
-      <div className="space-y-4">
+    <div className="mt-3 border-t pt-3 w-full">
+      <div className="space-y-4 w-full">
           {sortedModifierLists.map((modifierList: ModifierList) => (
-            <div key={modifierList.id}>
+            <div key={modifierList.id} className="w-full">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {modifierList.name}
                 {modifierList.required && <span className="text-gray-700 ml-1">*</span>}
@@ -125,13 +125,13 @@ export default function ModifierSelector({
                 )}
               </label>
               {modifierList.modifiers && modifierList.modifiers.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-2 w-full">
                   {modifierList.modifiers.map((modifier) => {
                     const isSelected = selectedModifiers.get(modifierList.id)?.includes(modifier.id) || false;
                     return (
                       <label
                         key={modifier.id}
-                        className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 hover:border-gray-300 cursor-pointer"
+                        className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 cursor-pointer w-full"
                       >
                         {modifierList.selectionType === "SINGLE" ? (
                           <input
@@ -139,24 +139,24 @@ export default function ModifierSelector({
                             name={modifierList.id}
                             checked={isSelected}
                             onChange={() => handleModifierToggle(modifierList.id, modifier.id, modifierList.selectionType)}
-                            className="w-4 h-4 text-teal"
+                            className="w-5 h-5 text-teal flex-shrink-0"
                           />
                         ) : (
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => handleModifierToggle(modifierList.id, modifier.id, modifierList.selectionType)}
-                            className="w-4 h-4 text-teal rounded"
+                            className="w-5 h-5 text-teal rounded flex-shrink-0"
                           />
                         )}
-                        <span className="flex-1 text-sm">{modifier.name}</span>
+                        <span className="flex-1 text-sm font-medium">{modifier.name}</span>
                         {modifier.price > 0 && (
-                          <span className="text-sm text-teal font-semibold">
+                          <span className="text-sm text-teal font-semibold flex-shrink-0">
                             +${modifier.price.toFixed(2)}
                           </span>
                         )}
                         {modifier.price === 0 && (
-                          <span className="text-xs text-gray-400">Free</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">Free</span>
                         )}
                       </label>
                     );
@@ -169,7 +169,7 @@ export default function ModifierSelector({
           ))}
           
           {/* Comment Section */}
-          <div className="pt-2 border-t">
+          <div className="pt-2 border-t w-full">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Special Instructions (Optional)
             </label>
@@ -186,7 +186,7 @@ export default function ModifierSelector({
             </p>
           </div>
           
-          <div className="pt-2 border-t">
+          <div className="pt-2 border-t w-full">
             <div className="flex items-center justify-between text-sm mb-3">
               <span className="font-medium">Total:</span>
               <span className="text-lg font-bold text-teal">${totalPrice.toFixed(2)}</span>

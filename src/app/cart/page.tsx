@@ -21,6 +21,7 @@ import {
   Edit,
   LogIn,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import { CartItem, MenuItem } from "@/types";
 import Link from "next/link";
@@ -48,6 +49,7 @@ export default function CartPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
+  const [pickupTime, setPickupTime] = useState<string>("");
   const [error, setError] = useState("");
   const [formValid, setFormValid] = useState(false);
   const [editingItem, setEditingItem] = useState<CartItem | null>(null);
@@ -274,6 +276,26 @@ export default function CartPage() {
   const orderableGST = calculateGST(orderableTotal); // Extract GST from total
   const orderableSubtotal = calculateBasePrice(orderableTotal); // Base price excluding GST
 
+  // Calculate estimated pickup time based on order items
+  const calculatePickupTime = (items: CartItem[]): string => {
+    if (items.length === 0) return "3-5 minutes"; // Default for empty (shouldn't happen)
+    
+    // Check if any item is food (not drinks)
+    const hasFood = items.some(item => {
+      // Try to get category from menu item first
+      const menuItem = menuItems.find(
+        (mi) => mi.id === item.originalItemId || 
+                mi.id === item.id || 
+                mi.square_id === item.square_id ||
+                mi.name.toLowerCase().trim() === item.name.toLowerCase().trim()
+      );
+      const category = menuItem?.category || "";
+      return getItemTypeFromCategory(category) === "food";
+    });
+    
+    return hasFood ? "10-12 minutes" : "3-5 minutes";
+  };
+
   const handlePaymentSuccess = async (paymentToken: string) => {
     setError("");
 
@@ -352,6 +374,10 @@ export default function CartPage() {
       // Clear cart from appropriate storage
       clearCart(isAuthenticated);
 
+      // Calculate and set pickup time
+      const estimatedPickupTime = calculatePickupTime(orderableItems);
+      setPickupTime(estimatedPickupTime);
+
       setOrderNumber(`#${order.id}`);
       setOrderPlaced(true);
     } catch (err) {
@@ -375,7 +401,13 @@ export default function CartPage() {
             </div>
             <h2 className="text-3xl font-bold mb-4">Order Placed!</h2>
             <p className="text-gray-600 mb-2">Thank you for your order</p>
-            <p className="text-2xl font-bold text-teal mb-6">{orderNumber}</p>
+            <p className="text-2xl font-bold text-teal mb-4">{orderNumber}</p>
+            {pickupTime && (
+              <div className="flex items-center justify-center gap-2 mb-6 text-lg text-gray-700">
+                <Clock className="w-5 h-5 text-teal" />
+                <span className="font-semibold">Estimated Pickup Time: {pickupTime}</span>
+              </div>
+            )}
             <p className="text-gray-600 mb-8">
               We&apos;ll have your order ready soon!
               {customerInfo.email && (

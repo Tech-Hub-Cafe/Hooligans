@@ -3,15 +3,29 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, Award } from "lucide-react";
 import Image from "next/image";
+import HomeStructuredData from "@/components/seo/HomeStructuredData";
+import StructuredData from "@/components/seo/StructuredData";
 
 export const metadata: Metadata = {
-  title: "Home | Hooligans",
-  description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere",
+  title: "Home",
+  description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere. Order online for pickup or delivery. Fresh food, great coffee, exceptional service at Hooligans.",
+  openGraph: {
+    title: "Hooligans | Artisan Coffee & Cuisine",
+    description: "Experience artisanal coffee and handcrafted cuisine. Order online for pickup or delivery.",
+    type: "website",
+    images: ["/logo/Hooligans-Hero-Logo-2.png"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Hooligans | Artisan Coffee & Cuisine",
+    description: "Experience artisanal coffee and handcrafted cuisine. Order online for pickup or delivery.",
+  },
 };
 
 export default function Home() {
   return (
     <div className="bg-white">
+      <HomeStructuredData />
       {/* Hero Section */}
       <section className="relative h-[90vh] flex items-center justify-center overflow-hidden">
         {/* Background Image */}

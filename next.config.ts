@@ -69,7 +69,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: https:",
               "font-src 'self' data:",
               "connect-src 'self' https://api.squareup.com https://connect.squareup.com https://pci-connect.squareup.com https://*.ingest.sentry.io",
-              "frame-src https://sandbox.web.squarecdn.com https://web.squarecdn.com",
+              "frame-src https://sandbox.web.squarecdn.com https://web.squarecdn.com https://www.google.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",

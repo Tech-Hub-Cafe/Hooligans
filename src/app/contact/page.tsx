@@ -54,11 +54,28 @@ export default function ContactPage() {
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Simulate form submission
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    setSubmitted(true);
-    setIsSubmitting(false);
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Error submitting form:", error);
+      alert(error instanceof Error ? error.message : "Failed to send message. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -173,19 +190,25 @@ export default function ContactPage() {
                 </div>
               )}
 
-              {/* Map Placeholder */}
-              <div className="mt-8 h-64 bg-gray-200 rounded-2xl overflow-hidden relative">
-                <iframe
-                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3153.0977904807944!2d-122.41941658468204!3d37.77492977975903!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8085809c6c8f4459%3A0xb10ed6d9b5050fa5!2sSan%20Francisco%2C%20CA!5e0!3m2!1sen!2sus!4v1699999999999!5m2!1sen!2sus"
-                  width="100%"
-                  height="100%"
-                  style={{ border: 0 }}
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  className="grayscale hover:grayscale-0 transition-all duration-300"
-                />
-              </div>
+              {/* Map */}
+              {settings?.address ? (
+                <div className="mt-8 h-64 bg-gray-200 rounded-2xl overflow-hidden relative">
+                  <iframe
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(settings.address)}&output=embed`}
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title={`Map showing ${settings.address}`}
+                  />
+                </div>
+              ) : (
+                <div className="mt-8 h-64 bg-gray-200 rounded-2xl flex items-center justify-center">
+                  <p className="text-gray-500">Address not configured</p>
+                </div>
+              )}
             </div>
 
             {/* Contact Form */}
@@ -293,7 +316,7 @@ export default function ContactPage() {
                 <h3 className="font-bold text-lg mb-3">Frequently Asked</h3>
                 <div className="space-y-3 text-gray-600">
                   <p><strong className="text-black">Do you offer catering?</strong> Yes! Contact us for events of any size.</p>
-                  <p><strong className="text-black">Is there parking?</strong> Street parking available, plus a lot behind the building.</p>
+                  <p><strong className="text-black">Is there parking?</strong> Street parking available.</p>
                   <p><strong className="text-black">Do you have WiFi?</strong> Free high-speed WiFi for all customers.</p>
                 </div>
               </div>

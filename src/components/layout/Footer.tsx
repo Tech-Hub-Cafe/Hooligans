@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Facebook, Instagram, Twitter } from "lucide-react";
+import { Facebook, Instagram, Twitter, Download } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import Image from "next/image";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 
 interface CafeSettings {
   cafe_name: string;
@@ -38,6 +39,8 @@ export default function Footer() {
     queryFn: fetchSettings,
     staleTime: 60 * 1000, // Cache for 1 minute
   });
+
+  const { isInstallable, installPWA } = usePWAInstall();
 
   // Use current year - calculate consistently to avoid hydration mismatch
   // Using useMemo ensures the same value on server and client
@@ -217,6 +220,20 @@ export default function Footer() {
             >
               Terms of Service
             </Link>
+            {/* Mobile-only PWA Install Link */}
+            {isInstallable && (
+              <>
+                <span className="text-gray-600 md:hidden">•</span>
+                <button
+                  onClick={installPWA}
+                  className="md:hidden text-gray-400 hover:text-teal transition-colors text-sm underline underline-offset-4 flex items-center gap-1.5"
+                  aria-label="Install Hooligans App"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Install App</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

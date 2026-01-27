@@ -3,9 +3,9 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Coffee, Menu, ShoppingBag, Home, Info, Phone, User, LogIn, Shield, X } from "lucide-react";
+import { Coffee, Menu, ShoppingBag, Home, Info, Phone, User, LogIn, Shield, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCart, migrateCartOnLogin } from "@/lib/cartStorage";
 import { MenuItem } from "@/types";
@@ -281,17 +281,29 @@ export default function Navigation() {
                     <div className="h-10 bg-gray-800 rounded animate-pulse" />
                   </div>
                 ) : session ? (
-                  <Link
-                    href="/profile"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center space-x-3 px-4 py-3 text-base font-medium transition-colors ${pathname === "/profile"
-                        ? "text-teal bg-white/5 border-l-4 border-teal"
-                        : "text-white hover:text-teal hover:bg-white/5"
-                      }`}
-                  >
-                    <User className="w-5 h-5" />
-                    <span>Profile</span>
-                  </Link>
+                  <>
+                    <Link
+                      href="/profile"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`flex items-center space-x-3 px-4 py-3 text-base font-medium transition-colors ${pathname === "/profile"
+                          ? "text-teal bg-white/5 border-l-4 border-teal"
+                          : "text-white hover:text-teal hover:bg-white/5"
+                        }`}
+                    >
+                      <User className="w-5 h-5" />
+                      <span>Profile</span>
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        signOut({ callbackUrl: "/" });
+                      }}
+                      className="w-full flex items-center space-x-3 px-4 py-3 text-base font-medium text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-colors"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </>
                 ) : (
                   <Link
                     href="/auth/login"
