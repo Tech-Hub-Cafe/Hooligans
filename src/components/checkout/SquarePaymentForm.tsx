@@ -14,20 +14,29 @@ declare global {
   }
 }
 
+interface PaymentRequest {
+  countryCode: string;
+  currencyCode: string;
+  total: {
+    amount: string;
+    label: string;
+  };
+}
+
+interface PaymentRequestOptions {
+  countryCode: string;
+  currencyCode: string;
+  total: {
+    amount: string;
+    label: string;
+  };
+}
+
 interface Payments {
   card: (options?: { postalCode?: boolean | string }) => Promise<Card>;
-  applePay: (options?: ApplePayOptions) => Promise<ApplePay>;
-  googlePay: (options?: GooglePayOptions) => Promise<GooglePay>;
-}
-
-interface ApplePayOptions {
-  countryCode: string;
-  currencyCode: string;
-}
-
-interface GooglePayOptions {
-  countryCode: string;
-  currencyCode: string;
+  applePay: (paymentRequest: PaymentRequest) => Promise<ApplePay>;
+  googlePay: (paymentRequest: PaymentRequest) => Promise<GooglePay>;
+  paymentRequest: (options: PaymentRequestOptions) => PaymentRequest;
 }
 
 interface Card {
@@ -553,6 +562,18 @@ export default function SquarePaymentForm({
 
         log.debug("Payments instance created successfully");
 
+        // Helper function to build PaymentRequest for digital wallets
+        const buildPaymentRequest = (payments: Payments): PaymentRequest => {
+          return payments.paymentRequest({
+            countryCode: "AU",
+            currencyCode: "AUD",
+            total: {
+              amount: amount.toFixed(2),
+              label: "Total",
+            },
+          });
+        };
+
         // Postal code configuration
         // Square automatically handles postal code requirements based on the location country
         // set in Square Dashboard. For Australia, Square will automatically hide the postal code
@@ -852,13 +873,17 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
         }
 
         // Initialize Apple Pay
-        // (Similar checks for isCancelled)
         try {
           if (isCancelled) return;
-          const applePay = await payments.applePay({
-            countryCode: "AU", // Australia
-            currencyCode: "AUD",
-          });
+          
+          // Check if paymentRequest method is available
+          if (!payments.paymentRequest) {
+            log.debug("PaymentRequest method not available, skipping Apple Pay");
+            return;
+          }
+
+          const paymentRequest = buildPaymentRequest(payments);
+          const applePay = await payments.applePay(paymentRequest);
 
           // Check if Apple Pay is available
           const applePayAvailable = await (applePay as any).canTokenize();
@@ -867,10 +892,47 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
               await applePay.destroy();
               return;
             }
+            // Ensure button container exists before attaching
+            const applePayContainer = document.getElementById("apple-pay-button");
+            if (!applePayContainer) {
+              log.debug("Apple Pay button container not found, skipping");
+              return;
+            }
+
             await applePay.attach("#apple-pay-button");
             applePayRef.current = applePay;
             setApplePayReady(true);
             log.debug("Apple Pay ready");
+
+            // Add click handler for Apple Pay button
+            // Square's attach() creates the button, wait for it to be ready
+            const setupApplePayClickHandler = () => {
+              const applePayContainer = document.getElementById("apple-pay-button");
+              if (applePayContainer) {
+                // Square creates a button element inside the container
+                const squareButton = applePayContainer.querySelector('button');
+                if (squareButton) {
+                  // Add click listener - Square's button handles the UI, we handle tokenization
+                  squareButton.addEventListener("click", async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    // Apple Pay requires immediate tokenize() call - no async operations before
+                    if (applePayRef.current) {
+                      await handlePayment('applePay');
+                    }
+                  });
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            // Try immediately, then retry if needed (Square might need a moment to create the button)
+            if (!setupApplePayClickHandler()) {
+              setTimeout(() => {
+                setupApplePayClickHandler();
+              }, 300);
+            }
           } else {
             log.debug("Apple Pay not available on this device");
           }
@@ -882,10 +944,15 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
         // Initialize Google Pay
         try {
           if (isCancelled) return;
-          const googlePay = await payments.googlePay({
-            countryCode: "AU", // Australia
-            currencyCode: "AUD",
-          });
+          
+          // Check if paymentRequest method is available
+          if (!payments.paymentRequest) {
+            log.debug("PaymentRequest method not available, skipping Google Pay");
+            return;
+          }
+
+          const paymentRequest = buildPaymentRequest(payments);
+          const googlePay = await payments.googlePay(paymentRequest);
 
           // Check if Google Pay is available
           const googlePayAvailable = await (googlePay as any).canTokenize();
@@ -894,10 +961,46 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
               await googlePay.destroy();
               return;
             }
+            // Ensure button container exists before attaching
+            const googlePayContainer = document.getElementById("google-pay-button");
+            if (!googlePayContainer) {
+              log.debug("Google Pay button container not found, skipping");
+              return;
+            }
+
             await googlePay.attach("#google-pay-button");
             googlePayRef.current = googlePay;
             setGooglePayReady(true);
             log.debug("Google Pay ready");
+
+            // Add click handler for Google Pay button
+            // Square's attach() creates the button, wait for it to be ready
+            const setupGooglePayClickHandler = () => {
+              const googlePayContainer = document.getElementById("google-pay-button");
+              if (googlePayContainer) {
+                // Square creates a button element inside the container
+                const squareButton = googlePayContainer.querySelector('button');
+                if (squareButton) {
+                  // Add click listener - Square's button handles the UI, we handle tokenization
+                  squareButton.addEventListener("click", async (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (googlePayRef.current) {
+                      await handlePayment('googlePay');
+                    }
+                  });
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            // Try immediately, then retry if needed (Square might need a moment to create the button)
+            if (!setupGooglePayClickHandler()) {
+              setTimeout(() => {
+                setupGooglePayClickHandler();
+              }, 300);
+            }
           } else {
             log.debug("Google Pay not available on this device");
           }
@@ -1083,19 +1186,15 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
 
   return (
     <div className="space-y-4">
-      {/* Apple Pay Button */}
-      {applePayReady && (
-        <div className="space-y-2">
-          <div id="apple-pay-button" className="min-h-[48px]" />
-        </div>
-      )}
+      {/* Apple Pay Button - always render container, show when ready */}
+      <div className="space-y-2" style={{ display: applePayReady ? 'block' : 'none' }}>
+        <div id="apple-pay-button" className="min-h-[48px]" />
+      </div>
 
-      {/* Google Pay Button */}
-      {googlePayReady && (
-        <div className="space-y-2">
-          <div id="google-pay-button" className="min-h-[48px]" />
-        </div>
-      )}
+      {/* Google Pay Button - always render container, show when ready */}
+      <div className="space-y-2" style={{ display: googlePayReady ? 'block' : 'none' }}>
+        <div id="google-pay-button" className="min-h-[48px]" />
+      </div>
 
       {/* Divider if digital wallets are available */}
       {(applePayReady || googlePayReady) && (

@@ -28,7 +28,8 @@ export const config = {
          * - favicon.ico (favicon file)
          * - logo/ (logo directory)
          * - icons/ (icons directory)
+         * - .well-known/ (Apple Pay domain verification and other well-known files)
          */
-        "/((?!api|_next/static|_next/image|favicon.ico|logo/|icons/).*)",
+        "/((?!api|_next/static|_next/image|favicon.ico|logo/|icons/|\\.well-known/).*)",
     ],
 };
