@@ -34,9 +34,13 @@ interface ContactMessage {
 }
 
 async function fetchContactMessages(): Promise<ContactMessage[]> {
-  const res = await fetch("/api/admin/contact-messages");
-  if (!res.ok) throw new Error("Failed to fetch contact messages");
-  return res.json();
+  const res = await fetch("/api/admin/contact-messages", { credentials: "include" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Failed to fetch contact messages");
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
 }
 
 export default function AdminContactMessagesPage() {
@@ -50,7 +54,7 @@ export default function AdminContactMessagesPage() {
   const [deleteMessageId, setDeleteMessageId] = useState<number | null>(null);
   const [filterRead, setFilterRead] = useState<string>("all");
 
-  const { data: messages = [], isLoading, refetch } = useQuery({
+  const { data: messages = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-contact-messages"],
     queryFn: fetchContactMessages,
   });
@@ -61,6 +65,7 @@ export default function AdminContactMessagesPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ read: true }),
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to mark message as read");
       return res.json();
@@ -74,6 +79,7 @@ export default function AdminContactMessagesPage() {
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/admin/contact-messages/${id}`, {
         method: "DELETE",
+        credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to delete message");
       return res.json();
@@ -122,6 +128,20 @@ export default function AdminContactMessagesPage() {
           Manage customer inquiries and messages from the contact form
         </p>
       </div>
+
+      {isError && (
+        <Card className="border-0 shadow-lg mb-6 border-l-4 border-l-red-500">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <p className="text-red-700">
+              {error instanceof Error ? error.message : "Failed to load contact messages. Sign in again or try refreshing."}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="shrink-0">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

@@ -4,7 +4,10 @@ import { requireAdmin } from "@/lib/adminAuth";
 
 export async function GET() {
   try {
-    await requireAdmin();
+    const authResult = await requireAdmin();
+    if (!authResult.authorized) {
+      return authResult.response;
+    }
 
     const messages = await prisma.contactMessage.findMany({
       orderBy: {
