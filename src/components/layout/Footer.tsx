@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Facebook, Instagram, Twitter, Download } from "lucide-react";
+import React, { useState } from "react";
+import { Facebook, Instagram, Twitter, Download, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import Image from "next/image";
@@ -40,7 +40,8 @@ export default function Footer() {
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
-  const { isInstalled, hasPrompt, installPWA } = usePWAInstall();
+  const { isInstalled, hasPrompt, isIOS, installPWA } = usePWAInstall();
+  const [showInstallInstructions, setShowInstallInstructions] = useState(false);
 
   // Use current year - calculate consistently to avoid hydration mismatch
   // Using useMemo ensures the same value on server and client
@@ -220,12 +221,13 @@ export default function Footer() {
             >
               Terms of Service
             </Link>
-            {/* PWA Install Link — show when not installed */}
+            {/* PWA Install — show when not installed */}
             {!isInstalled && (
               <>
                 <span className="text-gray-600">•</span>
                 {hasPrompt ? (
                   <button
+                    type="button"
                     onClick={installPWA}
                     className="text-gray-400 hover:text-teal transition-colors text-sm underline underline-offset-4 flex items-center gap-1.5"
                     aria-label="Install Hooligans App"
@@ -234,17 +236,77 @@ export default function Footer() {
                     <span>Install App</span>
                   </button>
                 ) : (
-                  <span className="text-gray-400 text-sm flex items-center gap-1.5" title="Use your browser menu to install the app">
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallInstructions(true)}
+                    className="text-gray-400 hover:text-teal transition-colors text-sm underline underline-offset-4 flex items-center gap-1.5"
+                    aria-label="How to install Hooligans App"
+                  >
                     <Download className="w-4 h-4" />
                     <span>Install App</span>
-                    <span className="text-xs text-gray-500">(browser menu)</span>
-                  </span>
+                  </button>
                 )}
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Install instructions modal — when browser doesn't offer install prompt (e.g. iOS or Android before criteria met) */}
+      {showInstallInstructions && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+          aria-modal="true"
+          aria-labelledby="install-instructions-title"
+          role="dialog"
+          onClick={() => setShowInstallInstructions(false)}
+        >
+          <div
+            className="bg-black border-t sm:border border-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[85vh] overflow-y-auto shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-black border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+              <h2 id="install-instructions-title" className="text-lg font-semibold text-teal">
+                Add Hooligans to your home screen
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowInstallInstructions(false)}
+                className="p-2 text-gray-400 hover:text-white rounded-full"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4 text-gray-300 text-sm">
+              {isIOS ? (
+                <>
+                  <p>On iPhone or iPad, use Safari:</p>
+                  <ol className="list-decimal list-inside space-y-2 pl-1">
+                    <li>Tap the <strong>Share</strong> button (box with arrow ↑) at the bottom of Safari.</li>
+                    <li>Scroll and tap <strong>Add to Home Screen</strong>.</li>
+                    <li>Tap <strong>Add</strong>.</li>
+                  </ol>
+                  <p className="text-gray-500 text-xs">
+                    If you&apos;re in Chrome or another browser, open this page in Safari first, then follow the steps above.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>Use your browser menu to install:</p>
+                  <ol className="list-decimal list-inside space-y-2 pl-1">
+                    <li>Tap the <strong>menu</strong> (⋮ or ⋯) in the top-right.</li>
+                    <li>Tap <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+                  </ol>
+                  <p className="text-gray-500 text-xs">
+                    If you don&apos;t see that option, the browser may show it after you spend a little time on the site or visit again.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </footer>
   );
 }

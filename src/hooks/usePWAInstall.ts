@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -11,6 +11,7 @@ interface UsePWAInstallReturn {
   isInstallable: boolean;
   isInstalled: boolean;
   isMobile: boolean;
+  isIOS: boolean;
   hasPrompt: boolean;
   installPWA: () => Promise<void>;
 }
@@ -19,7 +20,10 @@ export function usePWAInstall(): UsePWAInstallReturn {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   const [isInstallable, setIsInstallable] = useState(false);
+  const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
+  promptRef.current = deferredPrompt;
 
   useEffect(() => {
     // Only run on client side
@@ -34,10 +38,14 @@ export function usePWAInstall(): UsePWAInstallReturn {
 
     checkInstalled();
 
+    // Detect iOS (no beforeinstallprompt; user must use Share → Add to Home Screen)
+    const ua = navigator.userAgent;
+    setIsIOS(/iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
     // Detect mobile device
     const checkMobile = () => {
       const mobileMediaQuery = window.matchMedia('(max-width: 768px)');
-      const isMobileDevice = mobileMediaQuery.matches || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isMobileDevice = mobileMediaQuery.matches || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
       setIsMobile(isMobileDevice);
     };
 
@@ -77,34 +85,31 @@ export function usePWAInstall(): UsePWAInstallReturn {
     };
   }, []);
 
-  const installPWA = async () => {
-    if (!deferredPrompt) {
+  const installPWA = useCallback(async () => {
+    const prompt = promptRef.current;
+    if (!prompt) {
       console.warn('[PWA] Install prompt not available');
       return;
     }
 
     try {
-      await deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      
+      await prompt.prompt();
+      const { outcome } = await prompt.userChoice;
       if (outcome === 'accepted') {
-        console.log('[PWA] User accepted install prompt');
         setIsInstalled(true);
-      } else {
-        console.log('[PWA] User dismissed install prompt');
       }
-
       setDeferredPrompt(null);
       setIsInstallable(false);
     } catch (error) {
       console.error('[PWA] Error during install:', error);
     }
-  };
+  }, []);
 
   return {
     isInstallable: isInstallable && isMobile && !isInstalled,
     isInstalled,
     isMobile,
+    isIOS,
     hasPrompt: deferredPrompt !== null,
     installPWA,
   };
