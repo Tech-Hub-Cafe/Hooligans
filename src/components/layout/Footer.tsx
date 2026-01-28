@@ -40,7 +40,7 @@ export default function Footer() {
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
-  const { isInstallable, installPWA } = usePWAInstall();
+  const { isInstalled, hasPrompt, installPWA } = usePWAInstall();
 
   // Use current year - calculate consistently to avoid hydration mismatch
   // Using useMemo ensures the same value on server and client
@@ -220,18 +220,26 @@ export default function Footer() {
             >
               Terms of Service
             </Link>
-            {/* Mobile-only PWA Install Link */}
-            {isInstallable && (
+            {/* PWA Install Link — show when not installed */}
+            {!isInstalled && (
               <>
-                <span className="text-gray-600 md:hidden">•</span>
-                <button
-                  onClick={installPWA}
-                  className="md:hidden text-gray-400 hover:text-teal transition-colors text-sm underline underline-offset-4 flex items-center gap-1.5"
-                  aria-label="Install Hooligans App"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Install App</span>
-                </button>
+                <span className="text-gray-600">•</span>
+                {hasPrompt ? (
+                  <button
+                    onClick={installPWA}
+                    className="text-gray-400 hover:text-teal transition-colors text-sm underline underline-offset-4 flex items-center gap-1.5"
+                    aria-label="Install Hooligans App"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Install App</span>
+                  </button>
+                ) : (
+                  <span className="text-gray-400 text-sm flex items-center gap-1.5" title="Use your browser menu to install the app">
+                    <Download className="w-4 h-4" />
+                    <span>Install App</span>
+                    <span className="text-xs text-gray-500">(browser menu)</span>
+                  </span>
+                )}
               </>
             )}
           </div>

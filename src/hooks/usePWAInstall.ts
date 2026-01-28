@@ -11,6 +11,7 @@ interface UsePWAInstallReturn {
   isInstallable: boolean;
   isInstalled: boolean;
   isMobile: boolean;
+  hasPrompt: boolean;
   installPWA: () => Promise<void>;
 }
 
@@ -104,6 +105,7 @@ export function usePWAInstall(): UsePWAInstallReturn {
     isInstallable: isInstallable && isMobile && !isInstalled,
     isInstalled,
     isMobile,
+    hasPrompt: deferredPrompt !== null,
     installPWA,
   };
 }

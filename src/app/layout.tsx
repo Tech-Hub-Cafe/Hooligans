@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/layout/Navigation";
 import Footer from "@/components/layout/Footer";
 import QueryProvider from "@/components/providers/QueryProvider";
 import SessionProvider from "@/components/providers/SessionProvider";
-import PWAProvider from "@/components/providers/PWAProvider";
+
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s | Hooligans",
   },
   description: "Experience artisanal coffee and handcrafted cuisine in a warm, sophisticated atmosphere. Order online for pickup or delivery. Fresh food, great coffee, exceptional service.",
-  keywords: ["coffee", "cafe", "restaurant", "food delivery", "online ordering", "artisan coffee", "cuisine", "Hooligans", "cafe Australia"],
+  keywords: ["coffee", "cafe", "restaurant", "food delivery", "online ordering", "artisan coffee", "cuisine", "Hooligans", "cafe Australia", "cafe in Brookvale"],
   authors: [{ name: "Hooligans" }],
   creator: "Hooligans",
   publisher: "Hooligans",
@@ -102,13 +103,22 @@ export default function RootLayout({
       <body className={`${dmSans.variable} font-sans antialiased`} suppressHydrationWarning>
         <SessionProvider>
           <QueryProvider>
-            <PWAProvider>
-              <div className="min-h-screen bg-white flex flex-col">
-                <Navigation />
-                <main className="flex-1">{children}</main>
-                <Footer />
-              </div>
-            </PWAProvider>
+            <div className="min-h-screen bg-white flex flex-col">
+              <Navigation />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+            <Script
+              src={
+                process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT === "production" ||
+                  process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT === "prod" ||
+                  (!process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT &&
+                    !process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID?.startsWith("sandbox-"))
+                  ? "https://web.squarecdn.com/v1/square.js"
+                  : "https://sandbox.web.squarecdn.com/v1/square.js"
+              }
+              strategy="afterInteractive"
+            />
           </QueryProvider>
         </SessionProvider>
       </body>

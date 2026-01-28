@@ -146,6 +146,7 @@ export default function SquarePaymentForm({
     return true;
   })();
 
+
   const isSquareConfigured = !!(appId && locationId);
 
   // Log configuration status for debugging
@@ -199,95 +200,40 @@ export default function SquarePaymentForm({
     }
 
     // Check if Square SDK is already loaded
-        if (typeof window !== 'undefined' && ((window as any).Square || (globalThis as any).Square)) {
+    if (typeof window !== 'undefined' && ((window as any).Square || (globalThis as any).Square)) {
       log.debug("Square SDK already loaded");
       setIsSquareLoaded(true);
       return;
     }
 
-    // Check if script is already being loaded
-    const existingScript = document.querySelector(`script[src*="squarecdn.com"]`);
-    if (existingScript) {
-      log.debug("Square SDK script already exists, waiting for it to load...");
-      // Wait for existing script to load
-      const checkSquare = setInterval(() => {
-        const Square = (window as any).Square || (globalThis as any).Square;
-        if (Square && typeof Square.payments === 'function') {
-          clearInterval(checkSquare);
-          if (isMountedRef.current) {
-            setIsSquareLoaded(true);
-          }
-        }
-      }, 100);
-      
-      // Timeout after 10 seconds
-      setTimeout(() => {
+    // Since we are loading the script via next/script in layout, we just need to wait for it.
+    log.debug("Waiting for Square SDK to load (from global script)...");
+
+    // Check every 100ms
+    const checkSquare = setInterval(() => {
+      const Square = (window as any).Square || (globalThis as any).Square;
+      if (Square && typeof Square.payments === 'function') {
         clearInterval(checkSquare);
-        const Square = (window as any).Square || (globalThis as any).Square;
-        if (!Square && isMountedRef.current) {
-          log.error("Square SDK failed to load from existing script");
-          setError("Failed to load payment system. Please refresh the page.");
+        if (isMountedRef.current) {
+          log.debug("Square SDK detected");
+          setIsSquareLoaded(true);
         }
-      }, 10000);
-      
-      return () => clearInterval(checkSquare);
-    }
-
-    if (typeof window !== 'undefined') {
-      const isLocalhost = window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1' ||
-        window.location.hostname.startsWith('192.168.');
-      const isSecure = window.location.protocol === 'https:';
-
-      if (!isSecure && !isLocalhost) {
-        setError("Payment forms require a secure connection (HTTPS). Please access this page over HTTPS.");
-        log.warn("Page is not served over HTTPS. Payment forms may not work correctly.");
       }
-    }
+    }, 100);
 
-    const script = document.createElement("script");
-    script.id = "square-js-script";
-    script.src = getSquareSDKUrl();
-    script.async = true;
-    script.onload = () => {
-      // Wait for Square object to be available (it might not be immediately after onload)
-      const checkSquare = setInterval(() => {
-        if (typeof window !== 'undefined' && window.Square && typeof window.Square.payments === 'function') {
-          clearInterval(checkSquare);
-          if (isMountedRef.current) {
-            log.debug("Square SDK loaded and Square.payments is available");
-            setIsSquareLoaded(true);
-          }
-        }
-      }, 50); // Check every 50ms
-      
-      // Timeout after 10 seconds
-      setTimeout(() => {
-        clearInterval(checkSquare);
-        if (isMountedRef.current && (!window.Square || typeof window.Square.payments !== 'function')) {
-          log.error("Square SDK script loaded but Square.payments is not available");
-          setError("Failed to initialize payment system. Please refresh the page.");
-          onPaymentError("Failed to initialize payment system");
-        }
-      }, 10000);
-    };
-    script.onerror = (error) => {
-      if (isMountedRef.current) {
-        log.error("Failed to load Square SDK script", error);
-        setError("Failed to load payment system. Please check your internet connection and refresh the page.");
-        onPaymentError("Failed to load payment system");
+    // Timeout after 15 seconds (give mobile more time)
+    const timeoutId = setTimeout(() => {
+      clearInterval(checkSquare);
+      const Square = (window as any).Square || (globalThis as any).Square;
+      if (!Square && isMountedRef.current) {
+        log.error("Square SDK failed to load (timeout)");
+        setError("Failed to load payment system. Please refresh the page.");
       }
-    };
-    // Add to head as per Square documentation
-    const head = document.head || document.getElementsByTagName('head')[0];
-    if (head) {
-      head.appendChild(script);
-    } else {
-      // Fallback to body if head is not available
-      document.body.appendChild(script);
-    }
+    }, 15000);
 
     return () => {
+      clearInterval(checkSquare);
+      clearTimeout(timeoutId);
       isMountedRef.current = false;
       // Clear any pending retries
       if (retryTimeoutRef.current) {
@@ -318,13 +264,6 @@ export default function SquarePaymentForm({
           log.warn("Error destroying Google Pay:", e);
         }
         googlePayRef.current = null;
-      }
-      // Cleanup script only if it's the one we created (check by ID)
-      const scriptToRemove = document.getElementById("square-js-script");
-      if (scriptToRemove && scriptToRemove === script) {
-        // Only remove if no other Square components might be using it
-        // In practice, we'll leave it for other instances to use
-        // document.body.removeChild(scriptToRemove);
       }
       // Reset states
       setIsSquareLoaded(false);
@@ -368,13 +307,13 @@ export default function SquarePaymentForm({
     // Check for Square availability - try both window.Square and global Square
     const Square = typeof window !== 'undefined' ? (window as any).Square : null;
     const hasSquare = Square && typeof Square.payments === 'function';
-    
+
     if (!isSquareLoaded || !hasSquare || !appId || !locationId) {
       if (!isSquareLoaded) {
         log.debug("Waiting for Square SDK to load...");
       }
       if (!hasSquare) {
-        log.debug("Waiting for Square.payments to be available...", { 
+        log.debug("Waiting for Square.payments to be available...", {
           hasWindow: typeof window !== 'undefined',
           hasSquareObject: !!Square,
           hasPaymentsMethod: Square ? typeof Square.payments === 'function' : false
@@ -429,7 +368,7 @@ export default function SquarePaymentForm({
               const rect = container.getBoundingClientRect();
               const isInDOM = container.isConnected;
               const hasDimensions = rect.width > 0 || rect.height > 0;
-              
+
               log.debug(`Container found (attempt ${attempt + 1}/${maxRetries})`, {
                 containerId,
                 isInDOM,
@@ -437,13 +376,13 @@ export default function SquarePaymentForm({
                 dimensions: { width: rect.width, height: rect.height },
                 parentElement: container.parentElement?.tagName,
               });
-              
+
               // Return container even if dimensions are 0 (Square SDK can handle this)
               if (isInDOM) {
                 return container;
               }
             }
-            
+
             // Log what containers exist for debugging
             if (attempt === 0 || attempt % 5 === 0) {
               const allContainers = Array.from(document.querySelectorAll('[id*="card-container"]'));
@@ -456,12 +395,12 @@ export default function SquarePaymentForm({
                 })),
               });
             }
-            
+
             if (attempt < maxRetries - 1) {
               await new Promise(resolve => setTimeout(resolve, delay));
             }
           }
-          
+
           // Final check - maybe container exists but with different ID format
           const allContainers = Array.from(document.querySelectorAll('[id*="card-container"]'));
           log.error("Container not found after retries", {
@@ -864,7 +803,7 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
         } catch (cardError: any) {
           // Extract error details more thoroughly
           let errorDetails: any;
-          
+
           if (cardError instanceof Error) {
             errorDetails = {
               name: cardError.name,
@@ -888,24 +827,24 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
           } else {
             errorDetails = cardError || "Unknown error occurred";
           }
-          
+
           log.error("Failed to initialize card", errorDetails);
-          
+
           // Don't show error to user if component is unmounted
           if (!isCancelled && isMountedRef.current) {
             let errorMessage = "Unknown error";
-            
+
             if (cardError instanceof Error) {
               errorMessage = cardError.message || cardError.toString();
             } else if (cardError && typeof cardError === 'object') {
-              errorMessage = cardError.message || 
-                            cardError.error?.message || 
-                            JSON.stringify(cardError) || 
-                            "Card initialization failed";
+              errorMessage = cardError.message ||
+                cardError.error?.message ||
+                JSON.stringify(cardError) ||
+                "Card initialization failed";
             } else if (cardError) {
               errorMessage = String(cardError);
             }
-            
+
             setError(`Failed to initialize payment form: ${errorMessage}`);
             onPaymentError(`Payment form initialization failed: ${errorMessage}`);
           }
@@ -969,10 +908,10 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
 
       } catch (e: any) {
         if (isCancelled) return;
-        
+
         // Extract error details more thoroughly
         let errorDetails: any;
-        
+
         if (e instanceof Error) {
           errorDetails = {
             name: e.name,
@@ -996,24 +935,24 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
         } else {
           errorDetails = e || "Unknown error occurred";
         }
-        
+
         log.error("Failed to initialize payments", errorDetails);
-        
+
         // Only show error if component is still mounted
         if (isMountedRef.current) {
           let errorMessage = "Unknown error";
-          
+
           if (e instanceof Error) {
             errorMessage = e.message || e.toString();
           } else if (e && typeof e === 'object') {
-            errorMessage = e.message || 
-                          e.error?.message || 
-                          JSON.stringify(e) || 
-                          "Payment initialization failed";
+            errorMessage = e.message ||
+              e.error?.message ||
+              JSON.stringify(e) ||
+              "Payment initialization failed";
           } else if (e) {
             errorMessage = String(e);
           }
-          
+
           setError(`Failed to initialize payment form: ${errorMessage}`);
           onPaymentError(`Payment form initialization failed: ${errorMessage}`);
         }
