@@ -397,15 +397,21 @@ export async function createSquareOrder(orderData: {
   }>;
   customerNote?: string;
   referenceId?: string;
+  /** When set, adds a PICKUP fulfillment in PROPOSED state so the order appears in Active tab and triggers printer dockets. */
+  recipientDisplayName?: string;
+  /** Prep time in minutes for ASAP pickup (e.g. 15 → "PT15M"). Used only when recipientDisplayName is set. Default 15. */
+  prepTimeMinutes?: number;
 }) {
   try {
+    const prepMins = orderData.prepTimeMinutes ?? 15;
     console.log("[Square API] Creating Square Order:", {
       locationId: orderData.locationId?.substring(0, 10) + "...",
       lineItemCount: orderData.lineItems.length,
       hasCustomerNote: !!orderData.customerNote,
+      hasFulfillment: !!orderData.recipientDisplayName,
     });
 
-    const order = {
+    const order: Record<string, unknown> = {
       locationId: orderData.locationId,
       referenceId: orderData.referenceId || `WEB-${Date.now()}`,
       lineItems: orderData.lineItems.map(item => ({
@@ -428,6 +434,22 @@ export async function createSquareOrder(orderData: {
       }),
     };
 
+    if (orderData.recipientDisplayName) {
+      order.fulfillments = [
+        {
+          uid: "pickup1",
+          type: "PICKUP",
+          state: "PROPOSED",
+          pickup_details: {
+            schedule_type: "ASAP",
+            prep_time_duration: `PT${prepMins}M`,
+            recipient: { display_name: orderData.recipientDisplayName },
+            ...(orderData.customerNote && { note: orderData.customerNote }),
+          },
+        },
+      ];
+    }
+
     // Square Orders API - use create method
     const response = await ordersApi.create({
       order: order as any,
@@ -440,6 +462,7 @@ export async function createSquareOrder(orderData: {
       orderId: result.order?.id,
       state: result.order?.state,
       version: result.order?.version,
+      fulfillmentCount: (result.order?.fulfillments as unknown[])?.length ?? 0,
     });
 
     return {

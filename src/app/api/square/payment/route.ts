@@ -100,6 +100,8 @@ export async function POST(request: Request) {
               lineItems,
               customerNote: specialInstructions || `Order for ${customerName}`,
               referenceId: orderId ? `ORDER-${orderId}` : undefined,
+              recipientDisplayName: customerName || "Web customer",
+              prepTimeMinutes: 15,
             });
 
             if (squareOrderResponse.order?.id) {
