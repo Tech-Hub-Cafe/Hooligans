@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Users, Heart, Leaf } from "lucide-react";
+import { Users, Heart, Leaf, Award } from "lucide-react";
 import Image from "next/image";
 
 export const metadata: Metadata = {
@@ -40,7 +40,7 @@ export default function AboutPage() {
                 Born from a Love of <span className="text-teal">Coffee & Community</span>
               </h2>
               <p className="text-gray-600 mb-6 leading-relaxed text-lg">
-                Hooligans started in 2024 with a simple idea: create a space where everyone 
+                Hooligans started in 2026 with a simple idea: create a space where everyone 
                 feels welcome, the coffee is always exceptional, and every visit feels like 
                 coming home.
               </p>
@@ -76,14 +76,8 @@ export default function AboutPage() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="bg-white p-8 rounded-2xl shadow-lg text-center group hover:shadow-xl transition-shadow">
-              <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center p-2 mx-auto mb-6 group-hover:scale-110 transition-transform">
-                <Image
-                  src="/logo/Hooligans-Hero-Logo-2.png"
-                  alt="Hooligans Logo"
-                  width={48}
-                  height={48}
-                  className="w-full h-full object-contain"
-                />
+              <div className="w-16 h-16 bg-black rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                <Award className="w-8 h-8 text-teal" />
               </div>
               <h3 className="text-xl font-bold mb-3">Quality First</h3>
               <p className="text-gray-600">
@@ -118,71 +112,6 @@ export default function AboutPage() {
               <h3 className="text-xl font-bold mb-3">Passion</h3>
               <p className="text-gray-600">
                 Love in every latte, care in every bite
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-4xl font-bold text-center mb-6">
-            Meet the <span className="text-teal">Hooligans</span>
-          </h2>
-          <p className="text-gray-600 text-center max-w-2xl mx-auto mb-16 text-lg">
-            Our team of coffee enthusiasts, bakers, and hospitality pros who make the magic happen
-          </p>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center group">
-              <div className="relative w-48 h-48 mx-auto mb-6 rounded-full overflow-hidden shadow-xl">
-                <Image
-                  src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400"
-                  alt="Team member"
-                  fill
-                  className="object-cover group-hover:scale-110 transition-transform duration-300"
-                  sizes="192px"
-                />
-              </div>
-              <h3 className="text-xl font-bold mb-1">Alex Rivera</h3>
-              <p className="text-teal font-medium mb-2">Founder & Head Roaster</p>
-              <p className="text-gray-600 text-sm">
-                Former barista champion with 10+ years in specialty coffee
-              </p>
-            </div>
-
-            <div className="text-center group">
-              <div className="relative w-48 h-48 mx-auto mb-6 rounded-full overflow-hidden shadow-xl">
-                <Image
-                  src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400"
-                  alt="Team member"
-                  fill
-                  className="object-cover group-hover:scale-110 transition-transform duration-300"
-                  sizes="192px"
-                />
-              </div>
-              <h3 className="text-xl font-bold mb-1">Sarah Chen</h3>
-              <p className="text-teal font-medium mb-2">Head Baker</p>
-              <p className="text-gray-600 text-sm">
-                Pastry chef trained in Paris, obsessed with butter croissants
-              </p>
-            </div>
-
-            <div className="text-center group">
-              <div className="relative w-48 h-48 mx-auto mb-6 rounded-full overflow-hidden shadow-xl">
-                <Image
-                  src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400"
-                  alt="Team member"
-                  fill
-                  className="object-cover group-hover:scale-110 transition-transform duration-300"
-                  sizes="192px"
-                />
-              </div>
-              <h3 className="text-xl font-bold mb-1">Marcus Johnson</h3>
-              <p className="text-teal font-medium mb-2">General Manager</p>
-              <p className="text-gray-600 text-sm">
-                Hospitality veteran who remembers your name and your order
               </p>
             </div>
           </div>

@@ -50,7 +50,7 @@ export default function Footer() {
   // Default values if settings are loading or not available
   const cafeName = settings?.cafe_name || "Hooligans";
   const tagline = settings?.tagline || "Artisan Coffee & Cuisine";
-  const description = settings?.description || "Your neighborhood spot for exceptional coffee and good vibes since 2024.";
+  const description = settings?.description || "Your neighborhood spot for exceptional coffee and good vibes since 2026.";
   const address = settings?.address || "";
   const phone = settings?.phone || "";
   const email = settings?.email || "";

@@ -5,6 +5,8 @@ import { ArrowRight, Clock, Award } from "lucide-react";
 import Image from "next/image";
 import HomeStructuredData from "@/components/seo/HomeStructuredData";
 import StructuredData from "@/components/seo/StructuredData";
+import ReviewsSection from "@/components/home/ReviewsSection";
+import { reviews } from "@/data/reviews";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -42,7 +44,7 @@ export default function Home() {
 
         <div className="relative z-10 text-center px-4 max-w-5xl mx-auto">
           <div className="inline-block mb-6 px-6 py-2 bg-teal rounded-full">
-            <span className="text-white font-medium tracking-wide">EST. 2024</span>
+            <span className="text-white font-medium tracking-wide">EST. 2026</span>
           </div>
 
           <h1 className="text-6xl md:text-8xl font-bold text-white mb-6 tracking-tight">
@@ -82,8 +84,8 @@ export default function Home() {
             <div className="text-center group">
               <div className="w-20 h-20 mx-auto mb-6 bg-white rounded-2xl flex items-center justify-center p-2 transform transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                 <Image
-                  src="/logo/Hooligans-Hero-Logo-2.png"
-                  alt="Hooligans Logo"
+                  src="/icons/icon-96x96.svg"
+                  alt="Coffee Cup"
                   width={64}
                   height={64}
                   className="w-full h-full object-contain"
@@ -185,6 +187,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Reviews Section */}
+      <ReviewsSection reviews={reviews} />
     </div>
   );
 }

@@ -11,7 +11,7 @@ export async function GET() {
       return NextResponse.json({
         cafe_name: "Hooligans",
         tagline: "Artisan Coffee & Cuisine",
-        description: "Crafting exceptional coffee and culinary experiences since 2024.",
+        description: "Crafting exceptional coffee and culinary experiences since 2026.",
         address: "123 Coffee Street",
         phone: "(555) 123-4567",
         email: "hello@hooligans.com",
