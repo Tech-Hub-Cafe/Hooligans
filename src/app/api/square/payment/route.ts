@@ -3,8 +3,8 @@ import { createPayment, createSquareOrder, dollarsToSquareMoney } from "@/lib/sq
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { randomUUID } from "crypto";
-import { sendReceipt, sendOrderConfirmation } from "@/lib/email";
 import { sendOrderConfirmationSMS, isSMSConfigured } from "@/lib/sms";
+import { sendOrderConfirmationViaSender, sendReceiptViaSender, isSenderConfigured } from "@/lib/sender";
 
 interface Order {
   id: number;
@@ -161,23 +161,37 @@ export async function POST(request: Request) {
             });
           }
 
-          // Send notifications (non-blocking - don't fail payment if notifications fail)
+          // Send notifications via Sender only (non-blocking - don't fail payment if notifications fail)
           Promise.all([
-            // Send email receipt
-            sendReceipt({
-              to: customerEmail,
-              orderNumber: `#${orderId}`,
-              items: orderItems,
-              total: amount,
-              customerName,
-            }).catch((err) => console.error('[Payment API] Failed to send receipt email:', err)),
+            (async () => {
+              if (!isSenderConfigured()) return;
+              try {
+                await sendReceiptViaSender({
+                  to: customerEmail,
+                  orderNumber: `#${orderId}`,
+                  items: orderItems,
+                  total: amount,
+                  customerName,
+                });
+                console.log('[Payment API] Receipt sent via Sender');
+              } catch (err) {
+                console.error('[Payment API] Failed to send receipt email:', err);
+              }
+            })(),
 
-            // Send email confirmation
-            sendOrderConfirmation({
-              to: customerEmail,
-              orderNumber: `#${orderId}`,
-              customerName,
-            }).catch((err) => console.error('[Payment API] Failed to send confirmation email:', err)),
+            (async () => {
+              if (!isSenderConfigured()) return;
+              try {
+                await sendOrderConfirmationViaSender({
+                  to: customerEmail,
+                  orderNumber: `#${orderId}`,
+                  customerName,
+                });
+                console.log('[Payment API] Confirmation sent via Sender');
+              } catch (err) {
+                console.error('[Payment API] Failed to send confirmation email:', err);
+              }
+            })(),
 
             // Send SMS confirmation (if phone provided and SMS configured)
             (async () => {
@@ -242,7 +256,7 @@ export async function POST(request: Request) {
           statusCode = err.statusCode || err.status || statusCode;
           errorDetails = err.errors || null;
           troubleshooting = err.troubleshooting;
-          
+
           // Add helpful message for 401 errors
           if (statusCode === 401 || statusCode === 403) {
             errorMessage = `Square API Authentication Error (${statusCode}): ${errorMessage}. This usually means:

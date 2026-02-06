@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { sendContactConfirmation, sendContactNotification } from "@/lib/email";
+import {
+  sendContactConfirmationViaSender,
+  sendContactNotificationViaSender,
+  isSenderConfigured,
+} from "@/lib/sender";
 
 // Validation schema
 const contactSchema = z.object({
@@ -55,31 +59,50 @@ export async function POST(request: Request) {
 
     // Get admin email from settings
     const settings = await prisma.cafeSettings.findFirst();
-    const adminEmail = settings?.email || process.env.SMTP_USER || process.env.SMTP_FROM_EMAIL;
+    const adminEmail = settings?.email;
 
-    // Send emails (non-blocking - don't fail if emails fail)
-    Promise.all([
-      // Send confirmation to user
-      sendContactConfirmation({
-        to: sanitizedEmail,
-        name: sanitizedName,
-      }).catch((err) => console.error('[Contact API] Failed to send confirmation email:', err)),
+    // Send emails via Sender only (non-blocking)
+    const sendConfirmation = async () => {
+      if (!isSenderConfigured()) {
+        console.warn('[Contact API] Sender not configured, skipping confirmation email');
+        return;
+      }
+      try {
+        const result = await sendContactConfirmationViaSender({
+          to: sanitizedEmail,
+          name: sanitizedName,
+        });
+        if (result.success) console.log('[Contact API] Confirmation sent via Sender');
+        else console.error('[Contact API] Sender confirmation failed:', result.message);
+      } catch (err) {
+        console.error('[Contact API] Failed to send confirmation email:', err);
+      }
+    };
 
-      // Send notification to admin
-      adminEmail
-        ? sendContactNotification({
-            to: adminEmail,
-            name: sanitizedName,
-            email: sanitizedEmail,
-            subject: sanitizedSubject,
-            message: sanitizedMessage,
-          }).catch((err) => console.error('[Contact API] Failed to send notification email:', err))
-        : Promise.resolve(),
-    ]).then(() => {
-      console.log('[Contact API] Emails sent successfully');
-    }).catch((err) => {
-      console.error('[Contact API] Some emails failed:', err);
-    });
+    const sendNotification = async () => {
+      if (!adminEmail || !isSenderConfigured()) {
+        if (!adminEmail) console.warn('[Contact API] No admin email in settings, skipping notification');
+        else if (!isSenderConfigured()) console.warn('[Contact API] Sender not configured, skipping notification');
+        return;
+      }
+      try {
+        const result = await sendContactNotificationViaSender({
+          to: adminEmail,
+          name: sanitizedName,
+          email: sanitizedEmail,
+          subject: sanitizedSubject,
+          message: sanitizedMessage,
+        });
+        if (result.success) console.log('[Contact API] Notification sent via Sender');
+        else console.error('[Contact API] Sender notification failed:', result.message);
+      } catch (err) {
+        console.error('[Contact API] Failed to send notification email:', err);
+      }
+    };
+
+    Promise.all([sendConfirmation(), sendNotification()])
+      .then(() => console.log('[Contact API] Emails sent successfully'))
+      .catch((err) => console.error('[Contact API] Some emails failed:', err));
 
     return NextResponse.json(
       {

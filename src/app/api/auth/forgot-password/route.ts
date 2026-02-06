@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendPasswordResetEmail } from "@/lib/email";
+import { sendPasswordResetViaSender, isSenderConfigured } from "@/lib/sender";
 import { rateLimit, getClientIdentifier } from "@/lib/rateLimit";
 import { emailSchema } from "@/lib/validation";
 import crypto from "crypto";
@@ -93,16 +93,21 @@ export async function POST(request: Request) {
         },
       });
 
-      // Send password reset email
-      try {
-        await sendPasswordResetEmail({
-          to: user.email,
-          resetToken: token,
-          userName: user.name,
-        });
-      } catch (emailError) {
-        console.error("[ForgotPassword] Failed to send email:", emailError);
-        // Don't fail the request if email fails, but log it
+      // Send password reset email via Sender only
+      const resetUrl = `${process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/reset-password?token=${token}`;
+      const displayName = user.name || "there";
+      if (isSenderConfigured()) {
+        try {
+          await sendPasswordResetViaSender({
+            to: user.email,
+            resetUrl,
+            displayName,
+          });
+        } catch (emailError) {
+          console.error("[ForgotPassword] Failed to send password reset email:", emailError);
+        }
+      } else {
+        console.warn("[ForgotPassword] Sender not configured, password reset email not sent");
       }
     }
 

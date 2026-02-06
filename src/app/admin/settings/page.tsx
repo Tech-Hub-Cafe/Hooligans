@@ -15,6 +15,7 @@ import {
   Loader2,
   Save,
   CheckCircle,
+  Send,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,9 @@ export default function AdminSettingsPage() {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<Partial<CafeSettings>>({});
   const [saved, setSaved] = useState(false);
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [testEmailStatus, setTestEmailStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
+  const [testEmailMessage, setTestEmailMessage] = useState("");
 
   // Update page title
   useEffect(() => {
@@ -99,6 +103,37 @@ export default function AdminSettingsPage() {
 
   const updateField = (field: keyof CafeSettings, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSendTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = testEmailTo.trim();
+    if (!email) {
+      setTestEmailStatus("error");
+      setTestEmailMessage("Please enter an email address.");
+      return;
+    }
+    setTestEmailStatus("sending");
+    setTestEmailMessage("");
+    try {
+      const res = await fetch("/api/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: email }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestEmailStatus("success");
+        setTestEmailMessage(`Test email sent to ${email} via ${data.via ?? "email"}. Check the inbox (and spam).`);
+      } else {
+        setTestEmailStatus("error");
+        setTestEmailMessage(data.error || "Failed to send test email.");
+      }
+    } catch (err) {
+      setTestEmailStatus("error");
+      setTestEmailMessage(err instanceof Error ? err.message : "Failed to send test email.");
+    }
   };
 
   if (isLoading) {
@@ -156,6 +191,10 @@ export default function AdminSettingsPage() {
             <TabsTrigger value="social" className="gap-2">
               <Globe className="w-4 h-4" />
               Social Links
+            </TabsTrigger>
+            <TabsTrigger value="email" className="gap-2">
+              <Mail className="w-4 h-4" />
+              Email
             </TabsTrigger>
           </TabsList>
 
@@ -386,6 +425,72 @@ export default function AdminSettingsPage() {
                   These links will be displayed in the footer and contact page of
                   your website
                 </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Email Tab */}
+          <TabsContent value="email">
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="w-5 h-5 text-teal" />
+                  Test email
+                </CardTitle>
+                <p className="text-sm text-gray-500 font-normal mt-1">
+                  Send a test email to check that contact, order, and password-reset emails are delivered (via Sender or SMTP).
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col sm:flex-row gap-3 items-start">
+                  <div className="flex-1 w-full sm:max-w-sm">
+                    <Label htmlFor="test-email-to" className="sr-only">
+                      Email address
+                    </Label>
+                    <Input
+                      id="test-email-to"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={testEmailTo}
+                      onChange={(e) => {
+                        setTestEmailTo(e.target.value);
+                        setTestEmailStatus("idle");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSendTestEmail(e as unknown as React.FormEvent);
+                        }
+                      }}
+                      disabled={testEmailStatus === "sending"}
+                      className="w-full"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={(e) => handleSendTestEmail(e as unknown as React.FormEvent)}
+                    disabled={testEmailStatus === "sending"}
+                    className="bg-teal hover:bg-teal-dark text-white gap-2 shrink-0"
+                  >
+                    {testEmailStatus === "sending" ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        Send test email
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {testEmailStatus === "success" && (
+                  <p className="text-sm text-green-600 mt-3">{testEmailMessage}</p>
+                )}
+                {testEmailStatus === "error" && (
+                  <p className="text-sm text-red-600 mt-3">{testEmailMessage}</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
