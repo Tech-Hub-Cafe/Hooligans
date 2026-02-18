@@ -48,7 +48,7 @@ export default function Home() {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-bold text-white mb-6 tracking-tight">
-            Where Flavor
+            Where Flavour
             <br />
             <span className="text-teal">Meets Tradition</span>
           </h1>

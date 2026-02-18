@@ -21,6 +21,7 @@ interface PaymentRequest {
     amount: string;
     label: string;
   };
+  update?: (options: { total?: { amount: string; label: string } }) => boolean;
 }
 
 interface PaymentRequestOptions {
@@ -83,6 +84,7 @@ export default function SquarePaymentForm({
   const cardRef = useRef<Card | null>(null);
   const applePayRef = useRef<ApplePay | null>(null);
   const googlePayRef = useRef<GooglePay | null>(null);
+  const paymentRequestRef = useRef<PaymentRequest | null>(null);
   const isInitializingRef = useRef(false); // Prevent duplicate initializations
   const initializedRef = useRef(false); // Track if already initialized
   const isMountedRef = useRef(true); // Track if component is mounted
@@ -274,6 +276,7 @@ export default function SquarePaymentForm({
         }
         googlePayRef.current = null;
       }
+      paymentRequestRef.current = null;
       // Reset states
       setIsSquareLoaded(false);
       setCardReady(false);
@@ -562,9 +565,9 @@ export default function SquarePaymentForm({
 
         log.debug("Payments instance created successfully");
 
-        // Helper function to build PaymentRequest for digital wallets
+        // Helper: build PaymentRequest for digital wallets (shared by Apple Pay & Google Pay)
         const buildPaymentRequest = (payments: Payments): PaymentRequest => {
-          return payments.paymentRequest({
+          const request = payments.paymentRequest({
             countryCode: "AU",
             currencyCode: "AUD",
             total: {
@@ -572,6 +575,8 @@ export default function SquarePaymentForm({
               label: "Total",
             },
           });
+          paymentRequestRef.current = request;
+          return request;
         };
 
         // Postal code configuration
@@ -882,6 +887,7 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
             return;
           }
 
+          // Shared PaymentRequest for Apple Pay and Google Pay (amount updated via paymentRequestRef when cart changes)
           const paymentRequest = buildPaymentRequest(payments);
           const applePay = await payments.applePay(paymentRequest);
 
@@ -951,7 +957,8 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
             return;
           }
 
-          const paymentRequest = buildPaymentRequest(payments);
+          // Reuse same PaymentRequest as Apple Pay (already in paymentRequestRef)
+          const paymentRequest = paymentRequestRef.current ?? buildPaymentRequest(payments);
           const googlePay = await payments.googlePay(paymentRequest);
 
           // Check if Google Pay is available
@@ -1075,6 +1082,16 @@ Loc ID: ${locationId?.substring(0, 8)}...`;
       }
     };
   }, [isSquareLoaded, appId, locationId, isSquareConfigured, locationCountry, containerId]);
+
+  // Keep Apple Pay / Google Pay total in sync when cart amount changes (Square PaymentRequest.update)
+  useEffect(() => {
+    const pr = paymentRequestRef.current;
+    if (!pr?.update) return;
+    const ok = pr.update({ total: { amount: amount.toFixed(2), label: "Total" } });
+    if (!ok) {
+      log.debug("PaymentRequest.update returned false (e.g. sheet open); will use current amount on next open");
+    }
+  }, [amount]);
 
   // Check ordering availability
   const { data: orderingStatus } = useQuery({
